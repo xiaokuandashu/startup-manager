@@ -395,6 +395,48 @@ body {
 .filter-cell { cursor: pointer; }
 .filter-arrow { font-size: 10px; color: var(--text-muted); }
 
+/* Real app icon in task row */
+.task-real-icon {
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Wider time & countdown columns with tooltips */
+.task-time-cell { min-width: 130px; }
+.task-countdown-cell { min-width: 150px; }
+
+/* Calendar dot for days with logs */
+.cal-dot {
+  display: block;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  margin: 2px auto 0;
+}
+
+/* Timeline item improvements */
+.timeline-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+}
+.timeline-timestamp {
+  font-size: 11px; color: var(--text-muted);
+  margin-left: auto;
+}
+.timeline-details {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.timeline-message {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 4px;
+}
+.dot-error { background-color: var(--accent-red) !important; }
+.dot-success { background-color: var(--accent-green) !important; }
+
+
 /* ========================================
    More Dropdown
    ======================================== */

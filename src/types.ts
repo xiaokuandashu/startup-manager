@@ -2,6 +2,7 @@ export interface StartupTask {
   id: string;
   name: string;
   path: string;
+  icon?: string;           // Base64 data URI 应用图标
   enabled: boolean;
   type: 'application' | 'script' | 'service';
   taskType: string;       // 打开应用 / 打开执行文件 / 路径打开应用

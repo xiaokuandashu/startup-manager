@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { StartupTask } from '../types';
 
 interface AddTaskModalProps {
   isOpen: boolean;
@@ -11,7 +12,9 @@ interface AddTaskModalProps {
     path: string;
     note: string;
     selectedApp?: string;
+    icon?: string;
   }) => void;
+  editingTask?: StartupTask | null;
 }
 
 interface AppInfo {
@@ -40,10 +43,11 @@ const weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五
 // 平台检测
 const isTauriEnv = () => !!(window as any).__TAURI_INTERNALS__;
 
-const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }) => {
+const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, editingTask }) => {
   const [name, setName] = useState('');
   const [activeTab, setActiveTab] = useState<'app' | 'appPath' | 'execFile'>('app');
   const [selectedApp, setSelectedApp] = useState('');
+  const [selectedAppIcon, setSelectedAppIcon] = useState<string | undefined>();
   const [appSearch, setAppSearch] = useState('');
   const [cycleType, setCycleType] = useState('计算机启动时');
   const [execType, setExecType] = useState('延时执行');
@@ -59,6 +63,30 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [path, setPath] = useState('');
   const [note, setNote] = useState('');
+
+  // 编辑模式时预填表单
+  useEffect(() => {
+    if (editingTask && isOpen) {
+      setName(editingTask.name || '');
+      setNote(editingTask.note || '');
+      setPath(editingTask.path || '');
+      setSelectedAppIcon(editingTask.icon);
+      setCycleType(editingTask.timeType || '计算机启动时');
+      if (editingTask.taskType === '打开应用') setActiveTab('app');
+      else if (editingTask.taskType === '路径打开应用') setActiveTab('appPath');
+      else setActiveTab('execFile');
+      // 解析执行时间
+      if (editingTask.executeTime && editingTask.executeTime !== '—') {
+        if (editingTask.executeTime.includes('-')) {
+          const [datePart, timePart] = editingTask.executeTime.split(' ');
+          if (datePart) setExecDate(datePart);
+          if (timePart) setExecTime(timePart);
+        } else {
+          setExecTime(editingTask.executeTime);
+        }
+      }
+    }
+  }, [editingTask, isOpen]);
 
   // 文件选择对话框
   const selectFilePath = async (type: 'app' | 'exec') => {
@@ -199,6 +227,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 找到选中应用的图标
+    const appIcon = selectedAppIcon || apps.find(a => a.name === selectedApp)?.icon;
     onSubmit({
       name: name || selectedApp,
       taskType: activeTab === 'app' ? '打开应用' : activeTab === 'appPath' ? '路径打开应用' : '打开执行文件',
@@ -207,6 +237,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
       path,
       note,
       selectedApp,
+      icon: appIcon,
     });
     resetForm();
     onClose();
@@ -315,7 +346,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
                         type="radio"
                         name="selectedApp"
                         checked={selectedApp === app.name}
-                        onChange={() => { setSelectedApp(app.name); if (app.path) setPath(app.path); }}
+                        onChange={() => { setSelectedApp(app.name); if (app.path) setPath(app.path); setSelectedAppIcon(app.icon); }}
                       />
                       <span className="app-radio"></span>
                     </label>

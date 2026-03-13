@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use tauri::Manager;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {

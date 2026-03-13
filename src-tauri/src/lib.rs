@@ -99,7 +99,7 @@ fn get_installed_apps() -> Vec<InstalledApp> {
     #[cfg(target_os = "windows")]
     {
         // 扫描开始菜单快捷方式
-        let start_menu_dirs = vec![
+        let mut start_menu_dirs = vec![
             PathBuf::from(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs"),
         ];
 

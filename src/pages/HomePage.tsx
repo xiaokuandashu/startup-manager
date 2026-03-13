@@ -30,7 +30,6 @@ const saveTasks = (tasks: StartupTask[]) => {
   }
 };
 
-// 获取今日已执行任务 ID 集合
 const getExecutedToday = (): Set<string> => {
   try {
     const data = localStorage.getItem(EXECUTED_KEY);
@@ -54,41 +53,82 @@ const markExecuted = (taskId: string) => {
   }));
 };
 
-// 计算倒计时文字
-const calcCountdown = (executeTime: string, timeType: string): string => {
-  if (!executeTime || timeType === '开机启动') return '开机时执行';
+// 解析执行时间为 Date 对象
+const parseExecTime = (executeTime: string, timeType: string): Date | null => {
+  if (!executeTime || executeTime === '—' || timeType === '开机启动' || timeType === '计算机启动时') return null;
   try {
-    const now = new Date();
+    // 格式1: "YYYY-MM-DD HH:mm" (一次性任务)
+    if (executeTime.includes('-')) {
+      const dt = new Date(executeTime.replace(' ', 'T'));
+      if (!isNaN(dt.getTime())) return dt;
+    }
+    // 格式2: "HH:mm" (每天/每周/每月任务)
     const [h, m] = executeTime.split(':').map(Number);
+    const now = new Date();
     const target = new Date(now);
     target.setHours(h, m, 0, 0);
-    if (target <= now) {
-      // 如果今天已经过了执行时间，显示"明天"
-      target.setDate(target.getDate() + 1);
-    }
-    const diff = target.getTime() - now.getTime();
-    const hours = Math.floor(diff / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
-    if (hours > 0) return `${hours}小时${mins}分钟后`;
-    return `${mins}分钟后`;
+    if (target <= now) target.setDate(target.getDate() + 1);
+    return target;
   } catch {
-    return '—';
+    return null;
   }
+};
+
+// 计算倒计时文字（丰富格式）
+const calcCountdown = (executeTime: string, timeType: string): string => {
+  if (!executeTime || executeTime === '—' || timeType === '开机启动' || timeType === '计算机启动时') return '开机时执行';
+  const target = parseExecTime(executeTime, timeType);
+  if (!target) return '—';
+
+  const now = new Date();
+  const diff = target.getTime() - now.getTime();
+
+  if (diff <= 0) return '即将执行';
+
+  const secs = Math.floor(diff / 1000);
+  const mins = Math.floor(secs / 60);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+
+  // > 7天：显示具体执行时间
+  if (days > 7) {
+    const y = target.getFullYear();
+    const mo = String(target.getMonth() + 1).padStart(2, '0');
+    const d = String(target.getDate()).padStart(2, '0');
+    const h = String(target.getHours()).padStart(2, '0');
+    const mi = String(target.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d} ${h}:${mi}`;
+  }
+
+  // 1-7天：X天X小时X分
+  if (days >= 1) {
+    const remainHours = hours % 24;
+    const remainMins = mins % 60;
+    let str = `${days}天`;
+    if (remainHours > 0) str += `${remainHours}小时`;
+    if (remainMins > 0) str += `${remainMins}分`;
+    return str + '后';
+  }
+
+  // < 1天：X小时X分X秒
+  const remainMins = mins % 60;
+  const remainSecs = secs % 60;
+  if (hours > 0) {
+    return `${hours}小时${remainMins}分${remainSecs}秒后`;
+  }
+  if (remainMins > 0) {
+    return `${remainMins}分${remainSecs}秒后`;
+  }
+  return `${remainSecs}秒后`;
 };
 
 // 检查任务是否应该执行
 const shouldExecuteNow = (executeTime: string, timeType: string): boolean => {
-  if (!executeTime || timeType === '开机启动') return false;
-  try {
-    const now = new Date();
-    const [h, m] = executeTime.split(':').map(Number);
-    // 当前时间与目标时间差在2分钟内就执行
-    const nowMins = now.getHours() * 60 + now.getMinutes();
-    const targetMins = h * 60 + m;
-    return Math.abs(nowMins - targetMins) <= 1;
-  } catch {
-    return false;
-  }
+  const target = parseExecTime(executeTime, timeType);
+  if (!target) return false;
+  const now = new Date();
+  const diff = Math.abs(target.getTime() - now.getTime());
+  return diff <= 60000; // ±1分钟容差
 };
 
 // 执行 Tauri launch_app 命令
@@ -116,50 +156,55 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
   const [editingTask, setEditingTask] = useState<StartupTask | null>(null);
   const executedRef = useRef<Set<string>>(getExecutedToday());
 
-  // 自动保存到 localStorage
   useEffect(() => {
     saveTasks(tasks);
   }, [tasks]);
 
-  // 每30秒更新倒计时 + 检查并执行到时任务
+  // 每秒更新倒计时 + 每30秒检查任务执行
   useEffect(() => {
-    const checkAndExecute = async () => {
-      // 更新倒计时
+    let executionCounter = 0;
+
+    const tick = async () => {
+      // 每秒更新倒计时显示
       setTasks(prev => prev.map(t => ({
         ...t,
         timeUntilExec: calcCountdown(t.executeTime, t.timeType || ''),
       })));
 
-      // 检查需要执行的任务
-      const currentTasks = loadTasks(); // 读取最新状态
-      for (const task of currentTasks) {
-        if (!task.enabled) continue;
-        if (executedRef.current.has(task.id)) continue;
-        if (!task.executeTime || !task.path) continue;
-        if (task.timeType === '开机启动') continue;
+      // 每30次tick（每30秒）检查任务执行
+      executionCounter++;
+      if (executionCounter >= 30) {
+        executionCounter = 0;
+        const currentTasks = loadTasks();
+        for (const task of currentTasks) {
+          if (!task.enabled) continue;
+          if (executedRef.current.has(task.id)) continue;
+          if (!task.executeTime || !task.path) continue;
+          if (task.timeType === '开机启动' || task.timeType === '计算机启动时') continue;
 
-        if (shouldExecuteNow(task.executeTime, task.timeType || '')) {
-          console.log(`[定时任务] 执行: ${task.name} -> ${task.path}`);
-          executedRef.current.add(task.id);
-          markExecuted(task.id);
+          if (shouldExecuteNow(task.executeTime, task.timeType || '')) {
+            console.log(`[定时任务] 执行: ${task.name} -> ${task.path}`);
+            executedRef.current.add(task.id);
+            markExecuted(task.id);
 
-          const success = await executeLaunchApp(task.path);
-          setTasks(prev => prev.map(t => {
-            if (t.id === task.id) {
-              return {
-                ...t,
-                status: success ? 'running' : 'error',
-                statusText: success ? '今日执行成功' : '今日执行失败',
-              };
-            }
-            return t;
-          }));
+            const success = await executeLaunchApp(task.path);
+            setTasks(prev => prev.map(t => {
+              if (t.id === task.id) {
+                return {
+                  ...t,
+                  status: success ? 'running' : 'error',
+                  statusText: success ? '今日执行成功' : '今日执行失败',
+                };
+              }
+              return t;
+            }));
+          }
         }
       }
     };
 
-    checkAndExecute();
-    const timer = setInterval(checkAndExecute, 30000); // 每30秒检查一次
+    tick();
+    const timer = setInterval(tick, 1000); // 每秒更新
     return () => clearInterval(timer);
   }, []);
 
@@ -209,7 +254,6 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     }
   };
 
-  // 编辑任务
   const handleEdit = useCallback((id: string) => {
     const task = tasks.find(t => t.id === id);
     if (task) {
@@ -218,7 +262,6 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     }
   }, [tasks]);
 
-  // 复制任务
   const handleCopy = useCallback((id: string) => {
     const task = tasks.find(t => t.id === id);
     if (task) {

@@ -49,10 +49,11 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
   const [execType, setExecType] = useState('延时执行');
   const [delayMinutes, setDelayMinutes] = useState(0);
   const [execTime, setExecTime] = useState('00:00');
-  const [execDate, setExecDate] = useState('2025-09-08');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [execDate, setExecDate] = useState(todayStr);
   const [intervalValue, setIntervalValue] = useState(0);
   const [hasEndTime, setHasEndTime] = useState(false);
-  const [endDate, setEndDate] = useState('2025-09-08');
+  const [endDate, setEndDate] = useState(todayStr);
   const [endTime, setEndTime] = useState('00:00');
   const [selectedWeekDays, setSelectedWeekDays] = useState<string[]>([]);
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
@@ -130,16 +131,21 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
               setApps(installedApps);
               setAppsLoading(false);
 
-              // 懒加载图标：逐个异步加载，不阻塞 UI
-              for (const app of installedApps) {
-                try {
-                  const icon = await invoke('get_app_icon', { appPath: app.path }) as string;
-                  if (icon) {
-                    setApps(prev => prev.map(a => a.path === app.path ? { ...a, icon } : a));
+              // 并行加载图标：每批5个，提速5倍
+              const BATCH_SIZE = 5;
+              for (let i = 0; i < installedApps.length; i += BATCH_SIZE) {
+                const batch = installedApps.slice(i, i + BATCH_SIZE);
+                const results = await Promise.allSettled(
+                  batch.map(async (app) => {
+                    const icon = await invoke('get_app_icon', { appPath: app.path }) as string;
+                    return { path: app.path, icon };
+                  })
+                );
+                results.forEach(r => {
+                  if (r.status === 'fulfilled' && r.value.icon) {
+                    setApps(prev => prev.map(a => a.path === r.value.path ? { ...a, icon: r.value.icon } : a));
                   }
-                } catch {
-                  // 忽略单个图标加载失败
-                }
+                });
               }
             } else {
               setApps(mockApps);
@@ -197,7 +203,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
       name: name || selectedApp,
       taskType: activeTab === 'app' ? '打开应用' : activeTab === 'appPath' ? '路径打开应用' : '打开执行文件',
       timeType: cycleType,
-      executeTime: cycleType === '计算机启动时' ? '—' : execTime,
+      executeTime: cycleType === '计算机启动时' ? '—' : cycleType === '一次' ? `${execDate} ${execTime}` : execTime,
       path,
       note,
       selectedApp,

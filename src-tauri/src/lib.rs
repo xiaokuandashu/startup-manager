@@ -1,19 +1,19 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
     pub name: String,
     pub path: String,
-    pub icon: String, // base64 encoded icon or empty
+    pub icon: String,
 }
 
 #[derive(Serialize)]
 pub struct PlatformInfo {
-    pub platform: String,        // "macos" or "windows"
-    pub has_app_path_tab: bool, // Mac: false, Windows: true
+    pub platform: String,
+    pub has_app_path_tab: bool,
     pub script_extensions: Vec<String>,
 }
 
@@ -65,7 +65,6 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
     #[cfg(target_os = "macos")]
     {
-        // 扫描 /Applications 目录
         let app_dirs = vec![
             PathBuf::from("/Applications"),
             dirs_home().map(|h| h.join("Applications")).unwrap_or_default(),
@@ -82,13 +81,10 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                             .to_string_lossy()
                             .to_string();
 
-                        // 尝试读取应用图标 (Info.plist → CFBundleIconFile)
-                        let icon = get_mac_app_icon(&path);
-
                         apps.push(InstalledApp {
                             name,
                             path: path.to_string_lossy().to_string(),
-                            icon,
+                            icon: "📱".to_string(),
                         });
                     }
                 }
@@ -98,12 +94,10 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
     #[cfg(target_os = "windows")]
     {
-        // 扫描开始菜单快捷方式
         let mut start_menu_dirs = vec![
             PathBuf::from(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs"),
         ];
 
-        // 也扫描用户开始菜单
         if let Some(home) = dirs_home() {
             start_menu_dirs.push(
                 home.join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs"),
@@ -114,7 +108,6 @@ fn get_installed_apps() -> Vec<InstalledApp> {
             scan_windows_dir(dir, &mut apps);
         }
 
-        // 扫描 Program Files
         let program_dirs = vec![
             PathBuf::from(r"C:\Program Files"),
             PathBuf::from(r"C:\Program Files (x86)"),
@@ -125,7 +118,6 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.is_dir() {
-                        // 在程序目录中查找 .exe 文件
                         if let Ok(sub_entries) = fs::read_dir(&path) {
                             for sub_entry in sub_entries.flatten() {
                                 let sub_path = sub_entry.path();
@@ -136,14 +128,13 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                                         .to_string_lossy()
                                         .to_string();
 
-                                    // 过滤掉 uninstall 相关的
                                     if !name.to_lowercase().contains("uninstall")
                                         && !name.to_lowercase().contains("uninst")
                                     {
                                         apps.push(InstalledApp {
                                             name,
                                             path: sub_path.to_string_lossy().to_string(),
-                                            icon: String::new(),
+                                            icon: "💻".to_string(),
                                         });
                                     }
                                 }
@@ -155,10 +146,46 @@ fn get_installed_apps() -> Vec<InstalledApp> {
         }
     }
 
-    // 按名称排序并去重
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps.dedup_by(|a, b| a.path == b.path);
     apps
+}
+
+/// 启动应用
+#[tauri::command]
+fn launch_app(app_path: String) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&app_path)
+            .spawn()
+            .map_err(|e| format!("启动失败: {}", e))?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // 处理 .lnk 快捷方式和 .exe 文件
+        if app_path.ends_with(".lnk") {
+            Command::new("cmd")
+                .args(["/C", "start", "", &app_path])
+                .spawn()
+                .map_err(|e| format!("启动失败: {}", e))?;
+        } else {
+            Command::new(&app_path)
+                .spawn()
+                .map_err(|e| format!("启动失败: {}", e))?;
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Command::new("xdg-open")
+            .arg(&app_path)
+            .spawn()
+            .map_err(|e| format!("启动失败: {}", e))?;
+    }
+
+    Ok(format!("已启动: {}", app_path))
 }
 
 /// 获取用户主目录
@@ -175,14 +202,6 @@ fn dirs_home() -> Option<PathBuf> {
     {
         std::env::var("HOME").ok().map(PathBuf::from)
     }
-}
-
-/// 获取 macOS 应用图标 (简化版，返回空字符串，前端用默认图标)
-#[cfg(target_os = "macos")]
-fn get_mac_app_icon(_app_path: &PathBuf) -> String {
-    // 完整实现需要读取 Info.plist 并提取 .icns 文件
-    // 这里先返回空，前端使用默认图标
-    String::new()
 }
 
 /// 扫描 Windows 目录下的快捷方式
@@ -202,7 +221,7 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
                 apps.push(InstalledApp {
                     name,
                     path: path.to_string_lossy().to_string(),
-                    icon: String::new(),
+                    icon: "💻".to_string(),
                 });
             }
         }
@@ -211,12 +230,60 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_installed_apps,
-            get_platform_info
-        ])
+            get_platform_info,
+            launch_app
+        ]);
+
+    // Windows 系统托盘
+    #[cfg(target_os = "windows")]
+    let builder = {
+        use tauri::{
+            menu::{Menu, MenuItem},
+            tray::TrayIconBuilder,
+        };
+        builder.setup(|app| {
+            let show_i = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            
+            let _tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("自启精灵")
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+    };
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

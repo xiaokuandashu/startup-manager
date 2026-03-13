@@ -58,6 +58,33 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
   const [path, setPath] = useState('');
   const [note, setNote] = useState('');
 
+  // 文件选择对话框
+  const selectFilePath = async (type: 'app' | 'exec') => {
+    if (isTauriEnv()) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const filters = type === 'app'
+          ? [{ name: '应用程序', extensions: ['exe', 'app', 'lnk'] }]
+          : [{ name: '脚本文件', extensions: ['bat', 'cmd', 'ps1', 'sh', 'command'] }];
+        const selected = await open({
+          multiple: false,
+          directory: false,
+          filters,
+          title: type === 'app' ? '选择应用程序' : '选择执行文件',
+        });
+        if (selected) {
+          setPath(selected as string);
+        }
+      } catch (e) {
+        console.error('文件选择失败:', e);
+      }
+    } else {
+      // 浏览器模式：用 prompt
+      const result = prompt(type === 'app' ? '请输入应用路径' : '请输入执行文件路径');
+      if (result) setPath(result);
+    }
+  };
+
   // B5: 应用列表（Tauri 真实加载 vs 浏览器 mock）
   const [apps, setApps] = useState<AppInfo[]>(mockApps);
   const [appsLoading, setAppsLoading] = useState(false);
@@ -274,11 +301,15 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
             <div className="form-row-inline">
               <label className="form-label-inline">添加应用路径</label>
               <div className="path-select-group">
-                <button type="button" className="path-select-btn">
+                <button type="button" className="path-select-btn" onClick={() => selectFilePath('app')}>
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="1" y="1" width="14" height="14" rx="2" fill="#42A5F5"/></svg>
                   选择路径
                 </button>
-                <span className="path-hint">{appPathHint}</span>
+                {path ? (
+                  <span className="path-selected">{path}</span>
+                ) : (
+                  <span className="path-hint">{appPathHint}</span>
+                )}
               </div>
             </div>
           )}
@@ -286,13 +317,17 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
           {/* 执行文件 Tab — B6: 根据平台差异化后缀提示 */}
           {activeTab === 'execFile' && (
             <div className="form-row-inline">
-              <label className="form-label-inline">添加应用路径</label>
+              <label className="form-label-inline">添加执行文件</label>
               <div className="path-select-group">
-                <button type="button" className="path-select-btn">
+                <button type="button" className="path-select-btn" onClick={() => selectFilePath('exec')}>
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="1" y="1" width="14" height="14" rx="2" fill="#42A5F5"/></svg>
                   选择路径
                 </button>
-                <span className="path-hint">{execFileHint}</span>
+                {path ? (
+                  <span className="path-selected">{path}</span>
+                ) : (
+                  <span className="path-hint">{execFileHint}</span>
+                )}
               </div>
             </div>
           )}

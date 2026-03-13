@@ -7,19 +7,23 @@ interface UserInfo {
   vipExpireDate?: string;
 }
 
+type ThemeMode = 'light' | 'dark' | 'auto';
+
 interface SettingsPageProps {
   onBack: () => void;
-  theme: 'light' | 'dark';
-  onThemeChange: (theme: 'light' | 'dark') => void;
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
   user: UserInfo | null;
 }
 
-const isTauriEnv = () => !!(window as any).__TAURI__;
+const isTauriEnv = () => !!(window as any).__TAURI_INTERNALS__;
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChange, user }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeModeChange, user }) => {
   const [isMac, setIsMac] = useState(false);
-  const [autoStart, setAutoStart] = useState(false);
-  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray');
+  const [autoStart, setAutoStart] = useState(true); // 默认开启
+  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray'); // 默认最小化到托盘
+  const [hasChanges, setHasChanges] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -51,18 +55,43 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
       const saved = localStorage.getItem('closeBehavior');
       if (saved === 'exit') {
         setCloseBehavior('exit');
+      } else {
+        setCloseBehavior('tray'); // 默认最小化到托盘
+      }
+
+      // 初始化关闭行为到 Rust
+      if (isTauriEnv()) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const behavior = saved || 'tray';
+          await invoke('set_close_behavior', { minimizeToTray: behavior === 'tray' });
+        } catch (e) {
+          console.error('Init close behavior failed:', e);
+        }
       }
     };
     init();
   }, []);
 
   // 自启动切换
-  const handleAutoStartToggle = async (checked: boolean) => {
+  const handleAutoStartToggle = (checked: boolean) => {
     setAutoStart(checked);
+    setHasChanges(true);
+  };
+
+  // 关闭行为切换
+  const handleCloseBehaviorChange = (behavior: 'tray' | 'exit') => {
+    setCloseBehavior(behavior);
+    setHasChanges(true);
+  };
+
+  // 保存设置
+  const handleSave = async () => {
+    // 保存自启动
     if (isTauriEnv()) {
       try {
         const { enable, disable } = await import('@tauri-apps/plugin-autostart');
-        if (checked) {
+        if (autoStart) {
           await enable();
         } else {
           await disable();
@@ -70,21 +99,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
       } catch (e) {
         console.error('Autostart toggle failed:', e);
       }
-    }
-  };
 
-  // 关闭行为切换
-  const handleCloseBehaviorChange = async (behavior: 'tray' | 'exit') => {
-    setCloseBehavior(behavior);
-    localStorage.setItem('closeBehavior', behavior);
-    if (isTauriEnv()) {
+      // 保存关闭行为
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('set_close_behavior', { minimizeToTray: behavior === 'tray' });
+        await invoke('set_close_behavior', { minimizeToTray: closeBehavior === 'tray' });
       } catch (e) {
         console.error('Set close behavior failed:', e);
       }
     }
+
+    localStorage.setItem('closeBehavior', closeBehavior);
+    setHasChanges(false);
+    setSaveMsg('✅ 设置已保存');
+    setTimeout(() => setSaveMsg(''), 2000);
   };
 
   // 绑定手机号显示
@@ -106,6 +134,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
           </svg>
           设置
         </button>
+        <div className="settings-header-right">
+          {saveMsg && <span className="save-msg">{saveMsg}</span>}
+          <button
+            className={`btn-save ${hasChanges ? 'active' : ''}`}
+            onClick={handleSave}
+            disabled={!hasChanges}
+          >
+            保存设置
+          </button>
+        </div>
       </div>
 
       <div className="settings-body">
@@ -114,20 +152,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
           <h3 className="section-title">主题设置</h3>
           <div className="theme-options">
             <label
-              className={`theme-option ${theme === 'light' ? 'active' : ''}`}
-              onClick={() => onThemeChange('light')}
+              className={`theme-option ${themeMode === 'light' ? 'active' : ''}`}
+              onClick={() => onThemeModeChange('light')}
             >
-              <input type="radio" name="theme" checked={theme === 'light'} readOnly />
+              <input type="radio" name="theme" checked={themeMode === 'light'} readOnly />
               <span className="theme-icon">☀️</span>
               <span>亮色模式</span>
             </label>
             <label
-              className={`theme-option ${theme === 'dark' ? 'active' : ''}`}
-              onClick={() => onThemeChange('dark')}
+              className={`theme-option ${themeMode === 'dark' ? 'active' : ''}`}
+              onClick={() => onThemeModeChange('dark')}
             >
-              <input type="radio" name="theme" checked={theme === 'dark'} readOnly />
+              <input type="radio" name="theme" checked={themeMode === 'dark'} readOnly />
               <span className="theme-icon">🌙</span>
               <span>暗夜模式</span>
+            </label>
+            <label
+              className={`theme-option ${themeMode === 'auto' ? 'active' : ''}`}
+              onClick={() => onThemeModeChange('auto')}
+            >
+              <input type="radio" name="theme" checked={themeMode === 'auto'} readOnly />
+              <span className="theme-icon">💻</span>
+              <span>跟随系统</span>
             </label>
           </div>
         </div>

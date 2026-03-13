@@ -15,15 +15,41 @@ interface UserInfo {
   vipExpireDate?: string;
 }
 
+type ThemeMode = 'light' | 'dark' | 'auto';
+
+// 获取系统主题
+const getSystemTheme = (): 'light' | 'dark' => {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
+// 同步 Tauri 窗口标题栏主题
+const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark') => {
+  try {
+    if ((window as any).__TAURI_INTERNALS__) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.setTheme(resolvedTheme === 'dark' ? 'dark' : 'light');
+    }
+  } catch (e) {
+    console.error('Set titlebar theme failed:', e);
+  }
+};
+
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
 
-  // 主题管理
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  // 主题管理: light / dark / auto
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('themeMode') as ThemeMode) || 'light';
+  });
+
+  // 解析后的实际主题
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('themeMode') as ThemeMode || 'light';
+    return saved === 'auto' ? getSystemTheme() : saved as 'light' | 'dark';
   });
 
   // 用户认证
@@ -35,13 +61,38 @@ const App: React.FC = () => {
     return localStorage.getItem('token');
   });
 
+  // 主题变更处理
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    const actual = themeMode === 'auto' ? getSystemTheme() : themeMode;
+    setResolvedTheme(actual);
+    document.documentElement.setAttribute('data-theme', actual);
+    localStorage.setItem('themeMode', themeMode);
+    syncTitleBarTheme(actual);
+
+    // 监听系统主题变化
+    if (themeMode === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = (e: MediaQueryListEvent) => {
+        const t = e.matches ? 'dark' : 'light';
+        setResolvedTheme(t);
+        document.documentElement.setAttribute('data-theme', t);
+        syncTitleBarTheme(t);
+      };
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+  }, [themeMode]);
+
+  const handleThemeModeChange = (mode: ThemeMode) => {
+    setThemeMode(mode);
+  };
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    if (themeMode === 'auto') {
+      setThemeMode('light');
+    } else {
+      setThemeMode(prev => prev === 'light' ? 'dark' : 'light');
+    }
   };
 
   const handleLoginSuccess = (userInfo: UserInfo, authToken: string) => {
@@ -58,7 +109,6 @@ const App: React.FC = () => {
     localStorage.removeItem('token');
   };
 
-  // 添加任务前检查 VIP 权限
   const checkVipBeforeAdd = (): boolean => {
     if (!user) {
       setShowLogin(true);
@@ -81,7 +131,7 @@ const App: React.FC = () => {
           onSearchChange={setSearchQuery}
           onLogin={() => setShowLogin(true)}
           onVip={() => setShowVip(true)}
-          theme={theme}
+          theme={resolvedTheme}
           onToggleTheme={toggleTheme}
           user={user}
           onLogout={handleLogout}
@@ -99,8 +149,8 @@ const App: React.FC = () => {
         {currentPage === 'settings' && (
           <SettingsPage
             onBack={() => setCurrentPage('home')}
-            theme={theme}
-            onThemeChange={setTheme}
+            themeMode={themeMode}
+            onThemeModeChange={handleThemeModeChange}
             user={user}
           />
         )}

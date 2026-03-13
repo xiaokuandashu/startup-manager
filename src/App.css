@@ -1017,9 +1017,37 @@ body {
   flex-direction: column;
 }
 .settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px 24px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
+}
+.settings-header-right {
+  display: flex; align-items: center; gap: 12px;
+}
+.save-msg {
+  color: #34c759; font-size: 13px; font-weight: 500;
+}
+.btn-save {
+  padding: 8px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: not-allowed;
+  transition: var(--transition);
+}
+.btn-save.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  cursor: pointer;
+}
+.btn-save.active:hover {
+  filter: brightness(1.1);
 }
 .back-btn {
   display: flex; align-items: center; gap: 6px;

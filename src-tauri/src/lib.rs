@@ -191,8 +191,8 @@ fn launch_app(app_path: String) -> Result<String, String> {
 /// 设置窗口关闭行为
 #[tauri::command]
 fn set_close_behavior(app: tauri::AppHandle, minimize_to_tray: bool) -> Result<(), String> {
-    // 存储到全局状态
-    app.manage(CloseBehavior(std::sync::atomic::AtomicBool::new(minimize_to_tray)));
+    let state = app.state::<CloseBehavior>();
+    state.0.store(minimize_to_tray, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 

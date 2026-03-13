@@ -37,7 +37,7 @@ const mockApps: AppInfo[] = [
 const weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
 
 // 平台检测
-const isTauriEnv = () => !!(window as any).__TAURI__;
+const isTauriEnv = () => !!(window as any).__TAURI_INTERNALS__;
 
 const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [name, setName] = useState('');

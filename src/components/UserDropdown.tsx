@@ -12,13 +12,18 @@ interface UserDropdownProps {
   onLogin: () => void;
   user: UserInfo | null;
   onLogout: () => void;
+  avatarSrc?: string;
+  onChangeAvatar?: () => void;
 }
 
-const UserDropdown: React.FC<UserDropdownProps> = ({ onSettings, onLogin, user, onLogout }) => {
+const UserDropdown: React.FC<UserDropdownProps> = ({ onSettings, onLogin, user, onLogout, avatarSrc, onChangeAvatar }) => {
   return (
     <div className="user-dropdown">
       <div className="user-dropdown-header">
-        <img src="/icon/icon_touxiangmoren.svg" alt="avatar" width="50" height="50" style={{ borderRadius: '50%' }} />
+        <div className="user-dropdown-avatar-wrapper" onClick={onChangeAvatar} title="点击更换头像" style={{ cursor: 'pointer' }}>
+          <img src={avatarSrc || '/icon/icon_touxiangmoren.svg'} alt="avatar" width="50" height="50" style={{ borderRadius: '50%', objectFit: 'cover' }} />
+          <div className="avatar-change-hint">更换</div>
+        </div>
         <span className="user-dropdown-name">{user ? user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '请登陆'}</span>
       </div>
       <div className="user-dropdown-body">

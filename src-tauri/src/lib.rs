@@ -59,6 +59,90 @@ fn get_platform_info() -> PlatformInfo {
     }
 }
 
+/// 从 macOS .app 提取 Base64 图标
+#[cfg(target_os = "macos")]
+fn extract_mac_icon(app_path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    // 读 Info.plist 找图标文件名
+    let plist_path = app_path.join("Contents/Info.plist");
+    if !plist_path.exists() {
+        return None;
+    }
+    let output = Command::new("defaults")
+        .args(["read", &plist_path.to_string_lossy(), "CFBundleIconFile"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut icon_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if icon_name.is_empty() {
+        return None;
+    }
+    if !icon_name.ends_with(".icns") {
+        icon_name.push_str(".icns");
+    }
+    let icns_path = app_path.join("Contents/Resources").join(&icon_name);
+    if !icns_path.exists() {
+        return None;
+    }
+    // 用 sips 转 PNG 到临时文件
+    let tmp_png = format!("/tmp/app_icon_{}.png", std::process::id());
+    let status = Command::new("sips")
+        .args(["-s", "format", "png", "-z", "64", "64",
+               &icns_path.to_string_lossy(), "--out", &tmp_png])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .ok()?;
+    if !status.success() {
+        return None;
+    }
+    // 读取 PNG 文件并 base64 编码
+    let mut file = fs::File::open(&tmp_png).ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    let _ = fs::remove_file(&tmp_png);
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+    Some(format!("data:image/png;base64,{}", b64))
+}
+
+/// 从 Windows .exe 提取 Base64 图标
+#[cfg(target_os = "windows")]
+fn extract_win_icon(exe_path: &str) -> Option<String> {
+    use std::io::Read;
+    let tmp_png = format!("{}\\app_icon_{}.png",
+        std::env::temp_dir().to_string_lossy(), std::process::id());
+    let ps_script = format!(
+        r#"Add-Type -AssemblyName System.Drawing; $icon = [System.Drawing.Icon]::ExtractAssociatedIcon('{}'); if ($icon) {{ $bmp = $icon.ToBitmap(); $bmp.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $icon.Dispose() }}"#,
+        exe_path.replace("'", "''"),
+        tmp_png.replace("'", "''")
+    );
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_script])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .ok()?;
+    if !status.success() {
+        return None;
+    }
+    let tmp_path = std::path::Path::new(&tmp_png);
+    if !tmp_path.exists() {
+        return None;
+    }
+    let mut file = fs::File::open(&tmp_png).ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    let _ = fs::remove_file(&tmp_png);
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+    Some(format!("data:image/png;base64,{}", b64))
+}
+
 /// 获取已安装应用列表
 #[tauri::command]
 fn get_installed_apps() -> Vec<InstalledApp> {
@@ -82,10 +166,14 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                             .to_string_lossy()
                             .to_string();
 
+                        // 提取真实图标
+                        let icon = extract_mac_icon(&path)
+                            .unwrap_or_else(|| "📱".to_string());
+
                         apps.push(InstalledApp {
                             name,
                             path: path.to_string_lossy().to_string(),
-                            icon: "📱".to_string(),
+                            icon,
                         });
                     }
                 }
@@ -145,11 +233,48 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                 }
             }
         }
+
+        // 提取 Windows 应用图标（限前50个以提高性能）
+        for app in apps.iter_mut().take(50) {
+            let exe_path = if app.path.ends_with(".lnk") {
+                // 解析 .lnk 快捷方式获取目标路径
+                if let Some(target) = resolve_lnk_target(&app.path) {
+                    target
+                } else {
+                    continue;
+                }
+            } else {
+                app.path.clone()
+            };
+            if let Some(icon_b64) = extract_win_icon(&exe_path) {
+                app.icon = icon_b64;
+            }
+        }
     }
 
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps.dedup_by(|a, b| a.path == b.path);
     apps
+}
+
+/// 解析 Windows .lnk 快捷方式的目标路径
+#[cfg(target_os = "windows")]
+fn resolve_lnk_target(lnk_path: &str) -> Option<String> {
+    let ps_script = format!(
+        r#"$sh = New-Object -ComObject WScript.Shell; $sc = $sh.CreateShortcut('{}'); Write-Output $sc.TargetPath"#,
+        lnk_path.replace("'", "''")
+    );
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_script])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !target.is_empty() {
+            return Some(target);
+        }
+    }
+    None
 }
 
 /// 启动应用

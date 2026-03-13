@@ -282,7 +282,13 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
                 <div className="app-grid">
                   {filteredApps.map((app) => (
                     <label key={app.name} className={`app-grid-item ${selectedApp === app.name ? 'selected' : ''}`}>
-                      <div className="app-icon-placeholder">{app.icon}</div>
+                      <div className="app-icon-placeholder">
+                        {app.icon && app.icon.startsWith('data:image') ? (
+                          <img src={app.icon} alt={app.name} width="32" height="32" style={{ borderRadius: 6, objectFit: 'contain' }} />
+                        ) : (
+                          <span>{app.icon || '📱'}</span>
+                        )}
+                      </div>
                       <span className="app-grid-name">{app.name}</span>
                       <input
                         type="radio"

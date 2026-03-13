@@ -18,11 +18,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onSettings, onLogin, user, 
   return (
     <div className="user-dropdown">
       <div className="user-dropdown-header">
-        <svg viewBox="0 0 60 60" width="50" height="50">
-          <circle cx="30" cy="30" r="28" fill="#e0e0e0"/>
-          <circle cx="30" cy="24" r="10" fill="#bdbdbd"/>
-          <path d="M10 55 Q15 38 30 38 Q45 38 50 55" fill="#bdbdbd"/>
-        </svg>
+        <img src="/icon/icon_touxiangmoren.svg" alt="avatar" width="50" height="50" style={{ borderRadius: '50%' }} />
         <span className="user-dropdown-name">{user ? user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '请登陆'}</span>
       </div>
       <div className="user-dropdown-body">

@@ -11,20 +11,16 @@ interface HomePageProps {
 
 const TASKS_STORAGE_KEY = 'startup_tasks';
 
-// 从 localStorage 加载任务
 const loadTasks = (): StartupTask[] => {
   try {
     const saved = localStorage.getItem(TASKS_STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    if (saved) return JSON.parse(saved);
   } catch (e) {
     console.error('Failed to load tasks:', e);
   }
   return [];
 };
 
-// 保存任务到 localStorage
 const saveTasks = (tasks: StartupTask[]) => {
   try {
     localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
@@ -33,16 +29,49 @@ const saveTasks = (tasks: StartupTask[]) => {
   }
 };
 
+// 计算倒计时文字
+const calcCountdown = (executeTime: string, timeType: string): string => {
+  if (!executeTime || timeType === '开机启动') return '开机时执行';
+  try {
+    const now = new Date();
+    const [h, m] = executeTime.split(':').map(Number);
+    const target = new Date(now);
+    target.setHours(h, m, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    const diff = target.getTime() - now.getTime();
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    if (hours > 0) return `${hours}小时${mins}分钟后`;
+    return `${mins}分钟后`;
+  } catch {
+    return '—';
+  }
+};
+
 const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) => {
   const [tasks, setTasks] = useState<StartupTask[]>(loadTasks);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<StartupTask | null>(null);
 
-  // 自动保存任务到 localStorage
+  // 自动保存到 localStorage
   useEffect(() => {
     saveTasks(tasks);
   }, [tasks]);
+
+  // 每分钟更新倒计时
+  useEffect(() => {
+    const updateCountdowns = () => {
+      setTasks(prev => prev.map(t => ({
+        ...t,
+        timeUntilExec: calcCountdown(t.executeTime, t.timeType || ''),
+      })));
+    };
+    updateCountdowns();
+    const timer = setInterval(updateCountdowns, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const filteredTasks = searchQuery
     ? tasks.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -58,6 +87,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
 
   const handleAddClick = () => {
     if (checkVipBeforeAdd()) {
+      setEditingTask(null);
       setShowAddModal(true);
     }
   };
@@ -89,6 +119,29 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     }
   };
 
+  // 编辑任务：打开添加弹窗并预填数据（简化版：删除旧的再添加新的）
+  const handleEdit = useCallback((id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      setEditingTask(task);
+      setShowAddModal(true);
+    }
+  }, [tasks]);
+
+  // 复制任务
+  const handleCopy = useCallback((id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      const copied: StartupTask = {
+        ...task,
+        id: Date.now().toString(),
+        name: task.name + ' (副本)',
+        statusText: '等待执行',
+      };
+      setTasks(prev => [...prev, copied]);
+    }
+  }, [tasks]);
+
   const handleDelete = useCallback((id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
     setSelectedTasks(prev => prev.filter(x => x !== id));
@@ -104,22 +157,29 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     name: string; taskType: string; timeType: string;
     executeTime: string; path: string; note: string;
   }) => {
+    // 如果是编辑模式，删除旧任务
+    if (editingTask) {
+      setTasks(prev => prev.filter(t => t.id !== editingTask.id));
+    }
+
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
     const newTask: StartupTask = {
-      id: Date.now().toString(),
+      id: editingTask?.id || Date.now().toString(),
       name: formData.name,
       path: formData.path,
-      enabled: true,
+      enabled: editingTask?.enabled ?? true,
       type: 'application',
       taskType: formData.taskType,
       timeType: formData.timeType,
       executeTime: formData.executeTime,
-      timeUntilExec: '—',
+      timeUntilExec: calcCountdown(formData.executeTime, formData.timeType),
       status: 'running',
-      note: formData.note || '已添加',
+      note: formData.note,
       statusText: '等待执行',
-      fileExt: formData.taskType === '打开应用' ? '.app' : formData.taskType === '打开执行文件' ? '.bat' : '.exe',
+      fileExt: formData.taskType === '打开应用' ? (isMac ? '.app' : '.exe') : formData.taskType === '打开执行文件' ? (isMac ? '.sh' : '.bat') : '.exe',
     };
     setTasks(prev => [...prev, newTask]);
+    setEditingTask(null);
   };
 
   return (
@@ -142,8 +202,8 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
         onToggleSelectAll={handleToggleSelectAll}
         onSelect={handleSelect}
         onToggle={handleToggle}
-        onEdit={() => {}}
-        onCopy={() => {}}
+        onEdit={handleEdit}
+        onCopy={handleCopy}
         onDelete={handleDelete}
         onExport={() => {}}
         onBatchDelete={handleBatchDelete}
@@ -151,7 +211,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
       />
       <AddTaskModal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setEditingTask(null); }}
         onSubmit={handleAddTask}
       />
     </div>

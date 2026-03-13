@@ -90,8 +90,12 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
   const [appsLoading, setAppsLoading] = useState(false);
 
   // B6: 平台信息
-  const [platform, setPlatform] = useState<'macos' | 'windows' | 'linux'>('macos');
-  const [hasAppPathTab, setHasAppPathTab] = useState(false); // Mac 默认无应用路径 Tab
+  const [platform, setPlatform] = useState<'macos' | 'windows' | 'linux'>(() => {
+    return navigator.platform.toUpperCase().includes('MAC') ? 'macos' : 'windows';
+  });
+  const [hasAppPathTab, setHasAppPathTab] = useState(() => {
+    return !navigator.platform.toUpperCase().includes('MAC'); // Mac 默认无应用路径 Tab
+  });
 
   // B5 + B6: 初始化时加载平台信息和应用列表
   useEffect(() => {

@@ -33,7 +33,6 @@ const StatsBar: React.FC<StatsBarProps> = ({
     <div className={`stats-bar ${collapsed ? 'collapsed' : ''}`}>
       {!collapsed ? (
         <>
-          <div className="stats-bar-bg"></div>
           <div className="stats-bar-content">
             <div className="stats-actions">
               <button className="action-btn" onClick={onAddTask}>

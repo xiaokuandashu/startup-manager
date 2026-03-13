@@ -89,11 +89,7 @@ const Header: React.FC<HeaderProps> = ({
 
         <div className="avatar-wrapper" ref={dropdownRef}>
           <button className="user-avatar-btn" onClick={() => setShowUserDropdown(!showUserDropdown)}>
-            <svg viewBox="0 0 40 40" width="40" height="40">
-              <circle cx="20" cy="20" r="18" fill="#e0e0e0"/>
-              <circle cx="20" cy="16" r="7" fill="#bdbdbd"/>
-              <path d="M6 36 Q10 24 20 24 Q30 24 34 36" fill="#bdbdbd"/>
-            </svg>
+            <img src="/icon/icon_touxiangmoren.svg" alt="avatar" width="36" height="36" className="user-avatar-img" />
           </button>
           {showUserDropdown && (
             <UserDropdown

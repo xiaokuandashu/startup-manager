@@ -170,6 +170,12 @@ body {
   border-radius: 50%;
   cursor: pointer;
   padding: 0;
+  overflow: hidden;
+}
+.user-avatar-img {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 /* ========================================
@@ -850,7 +856,15 @@ body {
 /* ========================================
    VIP Modal
    ======================================== */
-.vip-modal { width: 780px; }
+.vip-modal { width: 780px; max-height: 85vh; display: flex; flex-direction: column; }
+.vip-header-fixed {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
 .vip-header {
   text-align: center;
   padding: 20px 24px 16px;
@@ -860,6 +874,11 @@ body {
 }
 .vip-header h2 { color: #D97706; font-size: 18px; }
 .vip-close { position: absolute; right: 16px; top: 16px; color: #D97706; }
+.vip-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(85vh - 120px);
+}
 .vip-close:hover { color: #92400E; }
 
 .vip-tabs {

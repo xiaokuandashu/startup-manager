@@ -76,19 +76,23 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content vip-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="vip-header">
-          <h2>⭐ 成为会员</h2>
-          <button className="modal-close vip-close" onClick={onClose}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
-            </svg>
-          </button>
+        <div className="vip-header-fixed">
+          <div className="vip-header">
+            <h2>⭐ 成为会员</h2>
+            <button className="modal-close vip-close" onClick={onClose}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="vip-tabs">
+            <button className={`vip-tab ${activeTab === 'purchase' ? 'active' : ''}`} onClick={() => setActiveTab('purchase')}>购买会员</button>
+            <button className={`vip-tab ${activeTab === 'activate' ? 'active' : ''}`} onClick={() => setActiveTab('activate')}>激活码</button>
+          </div>
         </div>
 
-        <div className="vip-tabs">
-          <button className={`vip-tab ${activeTab === 'purchase' ? 'active' : ''}`} onClick={() => setActiveTab('purchase')}>购买会员</button>
-          <button className={`vip-tab ${activeTab === 'activate' ? 'active' : ''}`} onClick={() => setActiveTab('activate')}>激活码</button>
-        </div>
+        <div className="vip-scroll-body">
 
         {activeTab === 'purchase' ? (
           <div className="vip-purchase-body">
@@ -181,6 +185,7 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

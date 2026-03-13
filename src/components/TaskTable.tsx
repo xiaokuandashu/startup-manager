@@ -63,12 +63,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
           {filteredTasks.length === 0 ? (
             <div className="empty-state">
               <div className="empty-illustration">
-                <svg viewBox="0 0 160 140" width="160" height="140" fill="none">
-                  <path d="M60 30 Q70 15 80 30" stroke="#ccc" strokeWidth="1.5" fill="none" opacity="0.5"/>
-                  <rect x="40" y="50" width="80" height="60" rx="8" fill="#E3F2FD"/>
-                  <rect x="50" y="35" width="60" height="80" rx="6" fill="#BBDEFB"/>
-                  <polygon points="75,55 95,70 75,85" fill="#42A5F5"/>
-                </svg>
+                <img src="/icon/icon_line_smile.svg" alt="empty" width="120" height="120" style={{ opacity: 0.6 }} />
               </div>
               <p className="empty-text">暂无历史记录，快去新建吧～～</p>
             </div>

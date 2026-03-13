@@ -86,7 +86,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
   };
 
   // B5: 应用列表（Tauri 真实加载 vs 浏览器 mock）
-  const [apps, setApps] = useState<AppInfo[]>(mockApps);
+  const [apps, setApps] = useState<AppInfo[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
 
   // B6: 平台信息
@@ -122,9 +122,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
           setAppsLoading(true);
           try {
             const installedApps = await invoke('get_installed_apps') as AppInfo[];
-            if (installedApps && installedApps.length > 0) {
-              setApps(installedApps);
-            }
+            setApps(installedApps && installedApps.length > 0 ? installedApps : mockApps);
           } catch {
             // Tauri 命令不可用，继续使用 mock
             setApps(mockApps);

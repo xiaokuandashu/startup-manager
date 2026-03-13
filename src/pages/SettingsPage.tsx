@@ -14,14 +14,18 @@ interface SettingsPageProps {
   user: UserInfo | null;
 }
 
+const isTauriEnv = () => !!(window as any).__TAURI__;
+
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChange, user }) => {
   const [isMac, setIsMac] = useState(false);
+  const [autoStart, setAutoStart] = useState(false);
+  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray');
 
   useEffect(() => {
-    // 检测平台
-    const checkPlatform = async () => {
+    const init = async () => {
+      // 检测平台
       try {
-        if ((window as any).__TAURI__) {
+        if (isTauriEnv()) {
           const { invoke } = await import('@tauri-apps/api/core');
           const info: any = await invoke('get_platform_info');
           setIsMac(info.platform === 'macos');
@@ -31,9 +35,57 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
       } catch {
         setIsMac(navigator.platform.toLowerCase().includes('mac'));
       }
+
+      // 加载自启动状态
+      if (isTauriEnv()) {
+        try {
+          const { isEnabled } = await import('@tauri-apps/plugin-autostart');
+          const enabled = await isEnabled();
+          setAutoStart(enabled);
+        } catch (e) {
+          console.error('Autostart check failed:', e);
+        }
+      }
+
+      // 加载关闭行为
+      const saved = localStorage.getItem('closeBehavior');
+      if (saved === 'exit') {
+        setCloseBehavior('exit');
+      }
     };
-    checkPlatform();
+    init();
   }, []);
+
+  // 自启动切换
+  const handleAutoStartToggle = async (checked: boolean) => {
+    setAutoStart(checked);
+    if (isTauriEnv()) {
+      try {
+        const { enable, disable } = await import('@tauri-apps/plugin-autostart');
+        if (checked) {
+          await enable();
+        } else {
+          await disable();
+        }
+      } catch (e) {
+        console.error('Autostart toggle failed:', e);
+      }
+    }
+  };
+
+  // 关闭行为切换
+  const handleCloseBehaviorChange = async (behavior: 'tray' | 'exit') => {
+    setCloseBehavior(behavior);
+    localStorage.setItem('closeBehavior', behavior);
+    if (isTauriEnv()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('set_close_behavior', { minimizeToTray: behavior === 'tray' });
+      } catch (e) {
+        console.error('Set close behavior failed:', e);
+      }
+    }
+  };
 
   // 绑定手机号显示
   const phoneDisplay = user?.phone
@@ -84,18 +136,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
         <div className="settings-section">
           <h3 className="section-title">基本设置</h3>
           <label className="checkbox-item">
-            <input type="checkbox" defaultChecked />
+            <input
+              type="checkbox"
+              checked={autoStart}
+              onChange={(e) => handleAutoStartToggle(e.target.checked)}
+            />
             开机自启动
           </label>
           {!isMac && (
             <>
               <span className="setting-label">关闭主窗口时</span>
               <label className="radio-item">
-                <input type="radio" name="close" defaultChecked />
+                <input
+                  type="radio"
+                  name="close"
+                  checked={closeBehavior === 'tray'}
+                  onChange={() => handleCloseBehaviorChange('tray')}
+                />
                 最小化到托盘
               </label>
               <label className="radio-item">
-                <input type="radio" name="close" />
+                <input
+                  type="radio"
+                  name="close"
+                  checked={closeBehavior === 'exit'}
+                  onChange={() => handleCloseBehaviorChange('exit')}
+                />
                 退出程序
               </label>
             </>

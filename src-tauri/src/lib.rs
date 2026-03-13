@@ -165,7 +165,6 @@ fn launch_app(app_path: String) -> Result<String, String> {
     
     #[cfg(target_os = "windows")]
     {
-        // 处理 .lnk 快捷方式和 .exe 文件
         if app_path.ends_with(".lnk") {
             Command::new("cmd")
                 .args(["/C", "start", "", &app_path])
@@ -188,6 +187,16 @@ fn launch_app(app_path: String) -> Result<String, String> {
 
     Ok(format!("已启动: {}", app_path))
 }
+
+/// 设置窗口关闭行为
+#[tauri::command]
+fn set_close_behavior(app: tauri::AppHandle, minimize_to_tray: bool) -> Result<(), String> {
+    // 存储到全局状态
+    app.manage(CloseBehavior(std::sync::atomic::AtomicBool::new(minimize_to_tray)));
+    Ok(())
+}
+
+struct CloseBehavior(std::sync::atomic::AtomicBool);
 
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
@@ -231,17 +240,25 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri_plugin_autostart::MacosLauncher;
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .manage(CloseBehavior(std::sync::atomic::AtomicBool::new(true)))
         .invoke_handler(tauri::generate_handler![
             get_installed_apps,
             get_platform_info,
-            launch_app
+            launch_app,
+            set_close_behavior
         ]);
 
-    // Windows 系统托盘
+    // Windows 系统托盘 + 窗口关闭拦截
     #[cfg(target_os = "windows")]
     let builder = {
         use tauri::{
@@ -281,6 +298,18 @@ pub fn run() {
                 })
                 .build(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                if let Some(state) = app.try_state::<CloseBehavior>() {
+                    let minimize = state.0.load(std::sync::atomic::Ordering::Relaxed);
+                    if minimize {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
+            }
         })
     };
 

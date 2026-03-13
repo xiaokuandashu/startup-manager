@@ -101,6 +101,7 @@ const App: React.FC = () => {
             onBack={() => setCurrentPage('home')}
             theme={theme}
             onThemeChange={setTheme}
+            user={user}
           />
         )}
       </main>

@@ -1,12 +1,50 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+
+interface UserInfo {
+  id: string;
+  phone: string;
+  vipStatus: string;
+  vipExpireDate?: string;
+}
 
 interface SettingsPageProps {
   onBack: () => void;
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
+  user: UserInfo | null;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChange }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChange, user }) => {
+  const [isMac, setIsMac] = useState(false);
+
+  useEffect(() => {
+    // 检测平台
+    const checkPlatform = async () => {
+      try {
+        if ((window as any).__TAURI__) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const info: any = await invoke('get_platform_info');
+          setIsMac(info.platform === 'macos');
+        } else {
+          setIsMac(navigator.platform.toLowerCase().includes('mac'));
+        }
+      } catch {
+        setIsMac(navigator.platform.toLowerCase().includes('mac'));
+      }
+    };
+    checkPlatform();
+  }, []);
+
+  // 绑定手机号显示
+  const phoneDisplay = user?.phone
+    ? user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
+    : '未绑定';
+
+  // 激活码状态
+  const vipDisplay = user?.vipStatus === 'active'
+    ? `已激活 (${user.vipExpireDate || '永久'})`
+    : '未激活';
+
   return (
     <div className="settings-page">
       <div className="settings-header">
@@ -49,15 +87,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
             <input type="checkbox" defaultChecked />
             开机自启动
           </label>
-          <span className="setting-label">关闭主窗口时</span>
-          <label className="radio-item">
-            <input type="radio" name="close" defaultChecked />
-            最小化到托盘
-          </label>
-          <label className="radio-item">
-            <input type="radio" name="close" />
-            退出程序
-          </label>
+          {!isMac && (
+            <>
+              <span className="setting-label">关闭主窗口时</span>
+              <label className="radio-item">
+                <input type="radio" name="close" defaultChecked />
+                最小化到托盘
+              </label>
+              <label className="radio-item">
+                <input type="radio" name="close" />
+                退出程序
+              </label>
+            </>
+          )}
         </div>
 
         {/* 安全设置 */}
@@ -65,11 +107,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, theme, onThemeChang
           <h3 className="section-title">安全设置</h3>
           <div className="setting-item">
             <span>绑定手机号</span>
-            <span className="tag-gray">未绑定</span>
+            <span className={user?.phone ? 'tag-green' : 'tag-gray'}>
+              {phoneDisplay}
+            </span>
           </div>
           <div className="setting-item">
             <span>激活码状态</span>
-            <span className="tag-gray">未激活</span>
+            <span className={user?.vipStatus === 'active' ? 'tag-green' : 'tag-gray'}>
+              {vipDisplay}
+            </span>
           </div>
         </div>
 

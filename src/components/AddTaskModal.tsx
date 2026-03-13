@@ -17,6 +17,7 @@ interface AddTaskModalProps {
 interface AppInfo {
   name: string;
   icon: string;
+  path?: string;
 }
 
 const mockApps: AppInfo[] = [
@@ -97,15 +98,15 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
     return !navigator.platform.toUpperCase().includes('MAC'); // Mac 默认无应用路径 Tab
   });
 
-  // B5 + B6: 初始化时加载平台信息和应用列表
+  // B5 + B6: 初始化时加载平台信息和应用列表（快速加载，图标懒加载）
   useEffect(() => {
     if (!isOpen) return;
 
     const loadPlatformAndApps = async () => {
       if (isTauriEnv()) {
         try {
-          // B6: 获取平台信息
           const { invoke } = await import('@tauri-apps/api/core');
+          // B6: 获取平台信息
           try {
             const platformInfo = await invoke('get_platform_info') as {
               os: string;
@@ -116,32 +117,46 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
             setPlatform(detectedPlatform);
             setHasAppPathTab(platformInfo.has_app_path_tab);
           } catch {
-            // 回退：根据 navigator 检测
             const isMac = navigator.platform.toUpperCase().includes('MAC');
             setPlatform(isMac ? 'macos' : 'windows');
             setHasAppPathTab(!isMac);
           }
 
-          // B5: 获取已安装应用
+          // B5: 快速获取应用列表（不含图标）
           setAppsLoading(true);
           try {
             const installedApps = await invoke('get_installed_apps') as AppInfo[];
-            setApps(installedApps && installedApps.length > 0 ? installedApps : mockApps);
+            if (installedApps && installedApps.length > 0) {
+              setApps(installedApps);
+              setAppsLoading(false);
+
+              // 懒加载图标：逐个异步加载，不阻塞 UI
+              for (const app of installedApps) {
+                try {
+                  const icon = await invoke('get_app_icon', { appPath: app.path }) as string;
+                  if (icon) {
+                    setApps(prev => prev.map(a => a.path === app.path ? { ...a, icon } : a));
+                  }
+                } catch {
+                  // 忽略单个图标加载失败
+                }
+              }
+            } else {
+              setApps(mockApps);
+              setAppsLoading(false);
+            }
           } catch {
-            // Tauri 命令不可用，继续使用 mock
             setApps(mockApps);
+            setAppsLoading(false);
           }
-          setAppsLoading(false);
         } catch {
-          // 非 Tauri 环境
           setApps(mockApps);
           setAppsLoading(false);
         }
       } else {
-        // 浏览器模式：mock 数据，根据 navigator 检测平台
         const isMac = navigator.platform.toUpperCase().includes('MAC');
         setPlatform(isMac ? 'macos' : 'windows');
-        setHasAppPathTab(!isMac); // Mac 无应用路径 Tab
+        setHasAppPathTab(!isMac);
         setApps(mockApps);
       }
     };
@@ -294,7 +309,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit }
                         type="radio"
                         name="selectedApp"
                         checked={selectedApp === app.name}
-                        onChange={() => setSelectedApp(app.name)}
+                        onChange={() => { setSelectedApp(app.name); if (app.path) setPath(app.path); }}
                       />
                       <span className="app-radio"></span>
                     </label>

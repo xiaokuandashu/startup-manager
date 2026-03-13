@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { StartupTask } from '../types';
 import StatsBar from '../components/StatsBar';
 import TaskTable from '../components/TaskTable';
@@ -10,6 +10,7 @@ interface HomePageProps {
 }
 
 const TASKS_STORAGE_KEY = 'startup_tasks';
+const EXECUTED_KEY = 'executed_tasks_today';
 
 const loadTasks = (): StartupTask[] => {
   try {
@@ -29,6 +30,30 @@ const saveTasks = (tasks: StartupTask[]) => {
   }
 };
 
+// 获取今日已执行任务 ID 集合
+const getExecutedToday = (): Set<string> => {
+  try {
+    const data = localStorage.getItem(EXECUTED_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      const today = new Date().toDateString();
+      if (parsed.date === today) {
+        return new Set(parsed.ids);
+      }
+    }
+  } catch {}
+  return new Set();
+};
+
+const markExecuted = (taskId: string) => {
+  const executed = getExecutedToday();
+  executed.add(taskId);
+  localStorage.setItem(EXECUTED_KEY, JSON.stringify({
+    date: new Date().toDateString(),
+    ids: Array.from(executed),
+  }));
+};
+
 // 计算倒计时文字
 const calcCountdown = (executeTime: string, timeType: string): string => {
   if (!executeTime || timeType === '开机启动') return '开机时执行';
@@ -37,7 +62,10 @@ const calcCountdown = (executeTime: string, timeType: string): string => {
     const [h, m] = executeTime.split(':').map(Number);
     const target = new Date(now);
     target.setHours(h, m, 0, 0);
-    if (target <= now) target.setDate(target.getDate() + 1);
+    if (target <= now) {
+      // 如果今天已经过了执行时间，显示"明天"
+      target.setDate(target.getDate() + 1);
+    }
     const diff = target.getTime() - now.getTime();
     const hours = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
@@ -48,28 +76,90 @@ const calcCountdown = (executeTime: string, timeType: string): string => {
   }
 };
 
+// 检查任务是否应该执行
+const shouldExecuteNow = (executeTime: string, timeType: string): boolean => {
+  if (!executeTime || timeType === '开机启动') return false;
+  try {
+    const now = new Date();
+    const [h, m] = executeTime.split(':').map(Number);
+    // 当前时间与目标时间差在2分钟内就执行
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const targetMins = h * 60 + m;
+    return Math.abs(nowMins - targetMins) <= 1;
+  } catch {
+    return false;
+  }
+};
+
+// 执行 Tauri launch_app 命令
+const executeLaunchApp = async (appPath: string): Promise<boolean> => {
+  try {
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (!isTauri) {
+      console.log('[模拟执行] launch_app:', appPath);
+      return true;
+    }
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('launch_app', { appPath });
+    return true;
+  } catch (e) {
+    console.error('启动失败:', e);
+    return false;
+  }
+};
+
 const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) => {
   const [tasks, setTasks] = useState<StartupTask[]>(loadTasks);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTask, setEditingTask] = useState<StartupTask | null>(null);
+  const executedRef = useRef<Set<string>>(getExecutedToday());
 
   // 自动保存到 localStorage
   useEffect(() => {
     saveTasks(tasks);
   }, [tasks]);
 
-  // 每分钟更新倒计时
+  // 每30秒更新倒计时 + 检查并执行到时任务
   useEffect(() => {
-    const updateCountdowns = () => {
+    const checkAndExecute = async () => {
+      // 更新倒计时
       setTasks(prev => prev.map(t => ({
         ...t,
         timeUntilExec: calcCountdown(t.executeTime, t.timeType || ''),
       })));
+
+      // 检查需要执行的任务
+      const currentTasks = loadTasks(); // 读取最新状态
+      for (const task of currentTasks) {
+        if (!task.enabled) continue;
+        if (executedRef.current.has(task.id)) continue;
+        if (!task.executeTime || !task.path) continue;
+        if (task.timeType === '开机启动') continue;
+
+        if (shouldExecuteNow(task.executeTime, task.timeType || '')) {
+          console.log(`[定时任务] 执行: ${task.name} -> ${task.path}`);
+          executedRef.current.add(task.id);
+          markExecuted(task.id);
+
+          const success = await executeLaunchApp(task.path);
+          setTasks(prev => prev.map(t => {
+            if (t.id === task.id) {
+              return {
+                ...t,
+                status: success ? 'running' : 'error',
+                statusText: success ? '今日执行成功' : '今日执行失败',
+              };
+            }
+            return t;
+          }));
+        }
+      }
     };
-    updateCountdowns();
-    const timer = setInterval(updateCountdowns, 60000);
+
+    checkAndExecute();
+    const timer = setInterval(checkAndExecute, 30000); // 每30秒检查一次
     return () => clearInterval(timer);
   }, []);
 
@@ -119,7 +209,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     }
   };
 
-  // 编辑任务：打开添加弹窗并预填数据（简化版：删除旧的再添加新的）
+  // 编辑任务
   const handleEdit = useCallback((id: string) => {
     const task = tasks.find(t => t.id === id);
     if (task) {
@@ -157,7 +247,6 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
     name: string; taskType: string; timeType: string;
     executeTime: string; path: string; note: string;
   }) => {
-    // 如果是编辑模式，删除旧任务
     if (editingTask) {
       setTasks(prev => prev.filter(t => t.id !== editingTask.id));
     }

@@ -7,7 +7,7 @@ interface VipModalProps {
   onActivated: (expireDate: string) => void;
 }
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'http://aacc.fun:3001/api';
 
 const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated }) => {
   const [activeTab, setActiveTab] = useState<'purchase' | 'activate'>('purchase');

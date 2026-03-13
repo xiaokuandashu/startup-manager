@@ -6,7 +6,7 @@ interface LoginModalProps {
   onLoginSuccess: (user: { id: string; phone: string; vipStatus: string; vipExpireDate?: string }, token: string) => void;
 }
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'http://aacc.fun:3001/api';
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
   const [phone, setPhone] = useState('');

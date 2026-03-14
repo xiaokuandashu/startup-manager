@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use tauri::Manager;
+use tauri::Emitter;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
@@ -344,6 +345,110 @@ fn set_close_behavior(app: tauri::AppHandle, minimize_to_tray: bool) -> Result<(
 
 struct CloseBehavior(std::sync::atomic::AtomicBool);
 
+/// 下载更新文件（带进度事件）
+#[tauri::command]
+async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, String> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    // 确定下载路径
+    let ext = if url.contains(".dmg") { ".dmg" } else { ".exe" };
+    let filename = format!("update_{}{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(), ext);
+    let download_dir = std::env::temp_dir().join(&filename);
+
+    let response = reqwest::get(&url).await.map_err(|e| format!("下载请求失败: {}", e))?;
+    let total_size = response.content_length().unwrap_or(0);
+
+    // 发送开始事件
+    let _ = app.emit("download-progress", serde_json::json!({
+        "status": "downloading",
+        "downloaded": 0u64,
+        "total": total_size,
+        "speed": 0u64,
+        "path": download_dir.to_string_lossy().to_string()
+    }));
+
+    let mut file = tokio::fs::File::create(&download_dir).await
+        .map_err(|e| format!("创建文件失败: {}", e))?;
+    let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
+    let start_time = std::time::Instant::now();
+    let mut last_emit = std::time::Instant::now();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载数据错误: {}", e))?;
+        file.write_all(&chunk).await.map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        // 每200ms发送一次进度
+        if last_emit.elapsed().as_millis() > 200 {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
+            let _ = app.emit("download-progress", serde_json::json!({
+                "status": "downloading",
+                "downloaded": downloaded,
+                "total": total_size,
+                "speed": speed,
+                "path": download_dir.to_string_lossy().to_string()
+            }));
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+
+    // 发送完成事件
+    let _ = app.emit("download-progress", serde_json::json!({
+        "status": "completed",
+        "downloaded": downloaded,
+        "total": total_size,
+        "speed": 0u64,
+        "path": download_dir.to_string_lossy().to_string()
+    }));
+
+    Ok(download_dir.to_string_lossy().to_string())
+}
+
+/// 安装更新并重启
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, file_path: String) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: 打开 .dmg 文件
+        Command::new("open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| format!("打开安装包失败: {}", e))?;
+        // 延迟退出，让用户看到提示
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            app_clone.exit(0);
+        });
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // Windows: 运行 .exe 安装程序
+        Command::new(&file_path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("运行安装程序失败: {}", e))?;
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            app_clone.exit(0);
+        });
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (&app, &file_path);
+    }
+    Ok("安装中...".to_string())
+}
+
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -402,7 +507,9 @@ pub fn run() {
             get_app_icon,
             get_platform_info,
             launch_app,
-            set_close_behavior
+            set_close_behavior,
+            download_update,
+            install_update
         ]);
 
     // Windows 系统托盘 + 窗口关闭拦截

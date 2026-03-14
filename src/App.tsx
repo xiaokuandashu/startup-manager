@@ -7,6 +7,7 @@ import LogPage from './pages/LogPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginModal from './components/LoginModal';
 import VipModal from './components/VipModal';
+import UpdateChecker from './components/UpdateChecker';
 
 interface UserInfo {
   id: string;
@@ -173,6 +174,7 @@ const App: React.FC = () => {
           }
         }}
       />
+      <UpdateChecker />
     </div>
   );
 };

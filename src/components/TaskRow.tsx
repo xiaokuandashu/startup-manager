@@ -31,12 +31,16 @@ const TaskRow: React.FC<TaskRowProps> = ({
 
   const ext = task.fileExt || '.app';
   const bgColor = extColorMap[ext] || '#42A5F5';
-
-  // 使用真实应用图标（如果有 Base64 icon），否则使用文件扩展名徽标
   const hasRealIcon = task.icon && task.icon.startsWith('data:image');
+
+  // 任务状态文字
+  const statusText = task.statusText || '等待执行';
+  const isError = statusText.includes('失败');
+  const isSuccess = statusText.includes('成功');
 
   return (
     <div className={`task-row ${isSelected ? 'selected' : ''}`}>
+      {/* 任务名称 */}
       <div className="task-cell task-name-cell">
         {hasRealIcon ? (
           <img src={task.icon} alt={task.name} className="task-real-icon" />
@@ -45,37 +49,46 @@ const TaskRow: React.FC<TaskRowProps> = ({
         )}
         <span className="task-name-text" title={task.name}>{task.name}</span>
       </div>
+      {/* 任务类型 */}
       <div className="task-cell" title={task.taskType}>{task.taskType}</div>
+      {/* 时间类型 */}
       <div className="task-cell" title={task.timeType}>{task.timeType}</div>
+      {/* 执行时间 */}
       <div className="task-cell task-time-cell" title={task.executeTime}>{task.executeTime}</div>
+      {/* 距离任务开始 */}
       <div className="task-cell task-countdown-cell" title={task.timeUntilExec}>{task.timeUntilExec}</div>
+      {/* 路径地址 */}
       <div className="task-cell task-path-cell" title={task.path}>{task.path || '— —'}</div>
-      <div className="task-cell task-note-cell">
-        <span title={task.note}>{task.note}</span>
-        {task.statusText && (
-          <span className={`status-tag ${task.statusText.includes('失败') ? 'error' : 'success'}`}>
-            {task.statusText}
-          </span>
-        )}
+      {/* 备注（单独一栏，显示用户输入的备注内容） */}
+      <div className="task-cell task-note-cell" title={task.note}>{task.note || '—'}</div>
+      {/* 任务状态（单独一栏，在开关前面） */}
+      <div className="task-cell task-status-cell">
+        <span className={`status-tag ${isError ? 'error' : isSuccess ? 'success' : 'pending'}`}>
+          {statusText}
+        </span>
       </div>
+      {/* 开关 */}
       <div className="task-cell">
         <Toggle checked={task.enabled} onChange={() => onToggle(task.id)} />
       </div>
+      {/* 操作 */}
       <div className="task-cell task-actions-cell">
         <button className="action-link" onClick={() => onEdit(task.id)}>编辑</button>
         <button className="action-link" onClick={() => onCopy(task.id)}>复制</button>
-        <div className="more-wrapper" style={{ position: 'relative' }}>
+        <div className="more-wrapper">
           <button
             className="action-link more-btn"
             ref={moreRef}
-            onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }}
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); setMoreOpen(!moreOpen); }}
           >···</button>
-          <MoreDropdown
-            isOpen={moreOpen}
-            onClose={() => setMoreOpen(false)}
-            onExport={() => onExport(task.id)}
-            onDelete={() => onDelete(task.id)}
-          />
+          {moreOpen && (
+            <MoreDropdown
+              isOpen={moreOpen}
+              onClose={() => setMoreOpen(false)}
+              onExport={() => { onExport(task.id); setMoreOpen(false); }}
+              onDelete={() => { onDelete(task.id); setMoreOpen(false); }}
+            />
+          )}
         </div>
       </div>
       {isSelectMode && (

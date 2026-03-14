@@ -160,7 +160,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
               setAppsLoading(false);
 
               // 并行加载图标：每批5个，提速5倍
-              const BATCH_SIZE = 5;
+              const BATCH_SIZE = 10;
               for (let i = 0; i < installedApps.length; i += BATCH_SIZE) {
                 const batch = installedApps.slice(i, i + BATCH_SIZE);
                 const results = await Promise.allSettled(

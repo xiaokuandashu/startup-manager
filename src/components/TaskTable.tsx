@@ -46,6 +46,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
           <div className="task-cell">距离任务开始</div>
           <div className="task-cell">路径地址</div>
           <div className="task-cell">备注</div>
+          <div className="task-cell">任务状态</div>
           <div className="task-cell">开关</div>
           <div className="task-cell">操作</div>
           <div className="task-cell task-checkbox-cell">

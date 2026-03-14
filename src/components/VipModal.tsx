@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface VipModalProps {
   isOpen: boolean;
@@ -7,25 +7,59 @@ interface VipModalProps {
   onActivated: (expireDate: string) => void;
 }
 
+interface Plan {
+  id: number;
+  name: string;
+  duration: string;
+  original_price: number;
+  actual_price: number;
+  is_limited: number;
+}
+
 const API_BASE = 'http://aacc.fun:3001/api';
 
 const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated }) => {
   const [activeTab, setActiveTab] = useState<'purchase' | 'activate'>('purchase');
-  const [selectedPlan, setSelectedPlan] = useState(1);
+  const [selectedPlan, setSelectedPlan] = useState(0);
   const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('wechat');
   const [activationCode, setActivationCode] = useState('');
   const [activateLoading, setActivateLoading] = useState(false);
   const [activateMsg, setActivateMsg] = useState('');
   const [activateError, setActivateError] = useState('');
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+
+  // 从服务端加载套餐价格
+  useEffect(() => {
+    if (!isOpen) return;
+    setPlansLoading(true);
+    fetch(`${API_BASE}/plans`)
+      .then(r => r.json())
+      .then((data: Plan[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPlans(data);
+        } else {
+          // 回退默认
+          setPlans([
+            { id: 0, name: '一个月会员', duration: '1month', original_price: 9.9, actual_price: 6.8, is_limited: 0 },
+            { id: 1, name: '三个月会员', duration: '3month', original_price: 29.7, actual_price: 16.6, is_limited: 0 },
+            { id: 2, name: '一年会员', duration: '1year', original_price: 118.8, actual_price: 36.9, is_limited: 0 },
+            { id: 3, name: '永久会员', duration: 'permanent', original_price: 399.9, actual_price: 66.6, is_limited: 1 },
+          ]);
+        }
+      })
+      .catch(() => {
+        setPlans([
+          { id: 0, name: '一个月会员', duration: '1month', original_price: 9.9, actual_price: 6.8, is_limited: 0 },
+          { id: 1, name: '三个月会员', duration: '3month', original_price: 29.7, actual_price: 16.6, is_limited: 0 },
+          { id: 2, name: '一年会员', duration: '1year', original_price: 118.8, actual_price: 36.9, is_limited: 0 },
+          { id: 3, name: '永久会员', duration: 'permanent', original_price: 399.9, actual_price: 66.6, is_limited: 1 },
+        ]);
+      })
+      .finally(() => setPlansLoading(false));
+  }, [isOpen]);
 
   if (!isOpen) return null;
-
-  const plans = [
-    { id: 0, name: '一个月会员', price: 6.8, original: 9.9 },
-    { id: 1, name: '三个月会员', price: 16.6, original: 29.7, discount: '立减13.1' },
-    { id: 2, name: '一年会员', price: 36.9, original: 118.8, discount: '立减81.9' },
-    { id: 3, name: '永久会员', price: 66.6, original: 399.9, discount: '立减333.3' },
-  ];
 
   const benefits = [
     { icon: '🚀', label: '无限创建启动任务' },
@@ -71,7 +105,7 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
     }
   };
 
-  const currentPlan = plans[selectedPlan];
+  const currentPlan = plans[selectedPlan] || plans[0];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -102,18 +136,28 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
               {!token && <button className="btn-login-sm">登录</button>}
             </div>
 
+            {plansLoading ? (
+              <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>加载套餐中...</div>
+            ) : (
             <div className="plan-cards">
-              {plans.map((plan, i) => (
-                <div key={i} className={`plan-card ${selectedPlan === i ? 'selected' : ''}`} onClick={() => setSelectedPlan(i)}>
-                  {plan.discount && <span className="plan-discount">{plan.discount}</span>}
-                  <span className="plan-name">{plan.name}</span>
-                  <div className="plan-price">
-                    ¥<strong>{plan.price}</strong>
-                    <s>¥{plan.original}</s>
+              {plans.map((plan, i) => {
+                const discount = plan.original_price > plan.actual_price
+                  ? `立减${(plan.original_price - plan.actual_price).toFixed(1)}`
+                  : '';
+                return (
+                  <div key={plan.id} className={`plan-card ${selectedPlan === i ? 'selected' : ''}`} onClick={() => setSelectedPlan(i)}>
+                    {discount && <span className="plan-discount">{discount}</span>}
+                    {plan.is_limited ? <span className="plan-limited">限时</span> : null}
+                    <span className="plan-name">{plan.name}</span>
+                    <div className="plan-price">
+                      ¥<strong>{plan.actual_price}</strong>
+                      <s>¥{plan.original_price}</s>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+            )}
 
             <div className="vip-benefits">
               <h4 className="benefits-title">会员 <span className="n-plus">N+</span> 项权益</h4>
@@ -148,10 +192,10 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
                 </div>
                 <div className="pay-info">
                   <div className="pay-price">
-                    实付 ¥<strong>{currentPlan.price}</strong>
+                    实付 ¥<strong>{currentPlan?.actual_price || '—'}</strong>
                   </div>
                   <span className="pay-discount-tag">限时优惠</span>
-                  <span className="pay-original">原价 ¥{currentPlan.original}</span>
+                  <span className="pay-original">原价 ¥{currentPlan?.original_price || '—'}</span>
                   <label className="pay-agree">
                     <input type="checkbox" defaultChecked />
                     已阅读并同意《会员协议》

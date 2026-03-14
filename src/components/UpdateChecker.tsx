@@ -36,7 +36,7 @@ const UpdateChecker: React.FC = () => {
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState('');
-  const [currentVersion, setCurrentVersion] = useState('0.1.0');
+  const [currentVersion, setCurrentVersion] = useState('0.2.7');
 
   useEffect(() => {
     const checkForUpdates = async () => {

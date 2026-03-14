@@ -39,6 +39,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
     <div className="task-table-container">
       <div className="task-table">
         <div className="task-table-header">
+          <div className="task-cell"></div>
           <div className="task-cell task-name-cell">任务名称</div>
           <div className="task-cell filter-cell">任务类型 <span className="filter-arrow">▾</span></div>
           <div className="task-cell filter-cell">时间类型 <span className="filter-arrow">▾</span></div>

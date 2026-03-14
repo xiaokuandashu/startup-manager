@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getVersion } from '@tauri-apps/api/app';
 
 interface UpdateInfo {
   hasUpdate: boolean;
@@ -19,7 +20,6 @@ interface DownloadProgress {
 }
 
 const API_BASE = 'http://aacc.fun:3001';
-const CURRENT_VERSION = '0.1.0';
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';
@@ -36,14 +36,24 @@ const UpdateChecker: React.FC = () => {
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState('');
+  const [currentVersion, setCurrentVersion] = useState('0.1.0');
 
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
+        // 动态获取应用版本号（从 tauri.conf.json 读取）
+        let appVersion = '0.1.0';
+        try {
+          appVersion = await getVersion();
+        } catch {
+          console.log('无法获取 Tauri 版本，使用默认版本');
+        }
+        setCurrentVersion(appVersion);
+
         const isMac = navigator.platform.toUpperCase().includes('MAC');
         const platform = isMac ? 'macos' : 'windows';
         const resp = await fetch(
-          `${API_BASE}/api/updates/check?platform=${platform}&version=${CURRENT_VERSION}`
+          `${API_BASE}/api/updates/check?platform=${platform}&version=${appVersion}`
         );
         const data: UpdateInfo = await resp.json();
         if (data.hasUpdate) {
@@ -54,6 +64,7 @@ const UpdateChecker: React.FC = () => {
       }
     };
 
+    // 启动后3秒检查更新
     const timer = setTimeout(checkForUpdates, 3000);
     return () => clearTimeout(timer);
   }, []);
@@ -121,7 +132,7 @@ const UpdateChecker: React.FC = () => {
         </div>
 
         <div className="update-dialog-body">
-          <p className="update-current">当前版本: v{CURRENT_VERSION}</p>
+          <p className="update-current">当前版本: v{currentVersion}</p>
           {updateInfo.changelog && (
             <div className="update-changelog-box">
               <h4>更新内容：</h4>

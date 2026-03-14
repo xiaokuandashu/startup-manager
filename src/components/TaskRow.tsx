@@ -33,22 +33,23 @@ const TaskRow: React.FC<TaskRowProps> = ({
   const bgColor = extColorMap[ext] || '#42A5F5';
   const hasRealIcon = task.icon && task.icon.startsWith('data:image');
 
-  // 任务状态文字
+  // 执行状态文字
   const statusText = task.statusText || '等待执行';
   const isError = statusText.includes('失败');
   const isSuccess = statusText.includes('成功');
 
   return (
     <div className={`task-row ${isSelected ? 'selected' : ''}`}>
-      {/* 任务名称 */}
-      <div className="task-cell task-name-cell">
+      {/* 图标列（独立列，无表头文字） */}
+      <div className="task-cell task-icon-cell">
         {hasRealIcon ? (
           <img src={task.icon} alt={task.name} className="task-real-icon" />
         ) : (
           <span className="file-ext-badge" style={{ backgroundColor: bgColor }}>{ext}</span>
         )}
-        <span className="task-name-text" title={task.name}>{task.name}</span>
       </div>
+      {/* 任务名称（与表头"任务名称"对齐） */}
+      <div className="task-cell task-name-cell" title={task.name}>{task.name}</div>
       {/* 任务类型 */}
       <div className="task-cell" title={task.taskType}>{task.taskType}</div>
       {/* 时间类型 */}
@@ -59,9 +60,9 @@ const TaskRow: React.FC<TaskRowProps> = ({
       <div className="task-cell task-countdown-cell" title={task.timeUntilExec}>{task.timeUntilExec}</div>
       {/* 路径地址 */}
       <div className="task-cell task-path-cell" title={task.path}>{task.path || '— —'}</div>
-      {/* 备注（单独一栏，显示用户输入的备注内容） */}
+      {/* 备注 */}
       <div className="task-cell task-note-cell" title={task.note}>{task.note || '—'}</div>
-      {/* 任务状态（单独一栏，在开关前面） */}
+      {/* 执行状态 */}
       <div className="task-cell task-status-cell">
         <span className={`status-tag ${isError ? 'error' : isSuccess ? 'success' : 'pending'}`}>
           {statusText}

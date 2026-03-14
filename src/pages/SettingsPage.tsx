@@ -152,20 +152,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     return () => { if (unlisten) unlisten(); };
   }, []);
 
-  const API_BASE = 'http://aacc.fun:3001';
-
   // 检查更新
   const handleCheckUpdate = async () => {
     setUpdateStatus('checking');
     setUpdateMsg('');
     try {
       const platform = isMac ? 'macos' : 'windows';
-      const resp = await fetch(`${API_BASE}/api/updates/check?platform=${platform}&version=${appVersion}`);
-      const data = await resp.json();
+      // 使用 Rust 命令检查更新（绕过 Mac WebView HTTP 限制）
+      const jsonStr = await invoke<string>('check_update', { platform, version: appVersion });
+      const data = JSON.parse(jsonStr);
       if (!data.hasUpdate) {
         setUpdateStatus('up-to-date');
-        setUpdateMsg('当前已是最新版本');
-        setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 3000);
+        setUpdateMsg(`当前版本 v${appVersion} 已是最新版本，暂无更新`);
+        setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 5000);
         return;
       }
 
@@ -174,6 +173,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       setDownloadProgress(0);
       setUpdateMsg(`发现新版本 v${data.version}，正在下载...`);
 
+      const API_BASE = 'http://aacc.fun:3001';
       const fullUrl = data.downloadUrl.startsWith('http') ? data.downloadUrl : `${API_BASE}${data.downloadUrl}`;
       const filePath = await invoke<string>('download_update', { url: fullUrl });
 
@@ -185,9 +185,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       setUpdateMsg('安装中，应用即将重启...');
       await invoke('install_update', { filePath });
     } catch (e: any) {
+      const errMsg = typeof e === 'string' ? e : (e?.message || e?.toString() || '未知错误');
       setUpdateStatus('error');
-      setUpdateMsg(`更新失败: ${typeof e === 'string' ? e : e.toString()}`);
-      setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 5000);
+      setUpdateMsg(`更新失败: ${errMsg}`);
+      setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 8000);
     }
   };
 

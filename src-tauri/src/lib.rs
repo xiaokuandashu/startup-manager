@@ -374,6 +374,26 @@ fn set_close_behavior(app: tauri::AppHandle, minimize_to_tray: bool) -> Result<(
 
 struct CloseBehavior(std::sync::atomic::AtomicBool);
 
+/// 检查更新（使用系统 curl，绕过 Mac WebView 的 ATS 限制）
+#[tauri::command]
+async fn check_update(platform: String, version: String) -> Result<String, String> {
+    let url = format!("http://aacc.fun:3001/api/updates/check?platform={}&version={}", platform, version);
+    let result = tokio::task::spawn_blocking(move || {
+        let output = Command::new("curl")
+            .args(["-s", "-L", "--connect-timeout", "10", "--max-time", "15", &url])
+            .output()
+            .map_err(|e| format!("curl 执行失败: {}", e))?;
+        if output.status.success() {
+            String::from_utf8(output.stdout)
+                .map_err(|e| format!("响应解析失败: {}", e))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(format!("请求失败: {}", stderr))
+        }
+    }).await.map_err(|e| format!("任务失败: {}", e))?;
+    result
+}
+
 /// 下载更新文件（使用系统 curl，跨平台可靠）
 #[tauri::command]
 async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, String> {
@@ -559,6 +579,7 @@ pub fn run() {
             get_platform_info,
             launch_app,
             set_close_behavior,
+            check_update,
             download_update,
             install_update
         ]);

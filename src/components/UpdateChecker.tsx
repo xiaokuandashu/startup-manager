@@ -52,10 +52,9 @@ const UpdateChecker: React.FC = () => {
 
         const isMac = navigator.platform.toUpperCase().includes('MAC');
         const platform = isMac ? 'macos' : 'windows';
-        const resp = await fetch(
-          `${API_BASE}/api/updates/check?platform=${platform}&version=${appVersion}`
-        );
-        const data: UpdateInfo = await resp.json();
+        // 使用 Rust 命令检查更新（绕过 Mac WebView HTTP 限制）
+        const jsonStr = await invoke<string>('check_update', { platform, version: appVersion });
+        const data: UpdateInfo = JSON.parse(jsonStr);
         if (data.hasUpdate) {
           // 检查是否已经跳过或已安装此版本
           const skippedVersion = localStorage.getItem('skipped_update_version');

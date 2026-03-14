@@ -161,7 +161,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       // 使用 Rust 命令检查更新（绕过 Mac WebView HTTP 限制）
       const jsonStr = await invoke<string>('check_update', { platform, version: appVersion });
       const data = JSON.parse(jsonStr);
-      if (!data.hasUpdate) {
+
+      // 比较版本号
+      const compareVer = (a: string, b: string): number => {
+        const pa = a.replace(/^v/, '').split('.').map(Number);
+        const pb = b.replace(/^v/, '').split('.').map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const na = pa[i] || 0;
+          const nb = pb[i] || 0;
+          if (na > nb) return 1;
+          if (na < nb) return -1;
+        }
+        return 0;
+      };
+
+      // 当前版本 >= 服务端版本，提示已是最新
+      if (!data.hasUpdate || compareVer(appVersion, data.version) >= 0) {
         setUpdateStatus('up-to-date');
         setUpdateMsg(`当前版本 v${appVersion} 已是最新版本，暂无更新`);
         setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 5000);
@@ -171,7 +186,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       // 有更新，开始下载
       setUpdateStatus('downloading');
       setDownloadProgress(0);
-      setUpdateMsg(`发现新版本 v${data.version}，正在下载...`);
+      setUpdateMsg(`发现新版本 v${data.version}（当前 v${appVersion}），正在下载...`);
 
       const API_BASE = 'http://aacc.fun:3001';
       const fullUrl = data.downloadUrl.startsWith('http') ? data.downloadUrl : `${API_BASE}${data.downloadUrl}`;

@@ -19,7 +19,6 @@ interface DownloadProgress {
   path: string;
 }
 
-const API_BASE = 'http://aacc.fun:3001';
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B';
@@ -27,6 +26,21 @@ const formatBytes = (bytes: number): string => {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+};
+
+const API_BASE = 'http://aacc.fun:3001';
+
+// 比较版本号: 返回 1 (a>b), -1 (a<b), 0 (a==b)
+const compareVersions = (a: string, b: string): number => {
+  const pa = a.replace(/^v/, '').split('.').map(Number);
+  const pb = b.replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
 };
 
 const UpdateChecker: React.FC = () => {
@@ -42,7 +56,7 @@ const UpdateChecker: React.FC = () => {
     const checkForUpdates = async () => {
       try {
         // 动态获取应用版本号
-        let appVersion = '0.1.0';
+        let appVersion = '0.2.7';
         try {
           appVersion = await getVersion();
         } catch {
@@ -56,11 +70,15 @@ const UpdateChecker: React.FC = () => {
         const jsonStr = await invoke<string>('check_update', { platform, version: appVersion });
         const data: UpdateInfo = JSON.parse(jsonStr);
         if (data.hasUpdate) {
+          // 客户端版本 >= 服务端版本时，不提示更新
+          if (compareVersions(appVersion, data.version) >= 0) {
+            console.log(`本地版本 ${appVersion} >= 服务端版本 ${data.version}，无需更新`);
+            return;
+          }
           // 检查是否已经跳过或已安装此版本
           const skippedVersion = localStorage.getItem('skipped_update_version');
           const installedVersion = localStorage.getItem('installed_update_version');
           if (skippedVersion === data.version || installedVersion === data.version) {
-            // 已跳过或已安装过，不再提示（除非是强制更新）
             if (!data.forceUpdate) return;
           }
           setUpdateInfo(data);

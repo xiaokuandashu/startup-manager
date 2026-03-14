@@ -130,9 +130,24 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                                         .to_string_lossy()
                                         .to_string();
 
-                                    if !name.to_lowercase().contains("uninstall")
-                                        && !name.to_lowercase().contains("uninst")
-                                    {
+                                    let name_lower = name.to_lowercase();
+                                    // 过滤卸载程序和系统工具
+                                    let is_system = name_lower.contains("uninstall")
+                                        || name_lower.contains("uninst")
+                                        || name_lower.contains("remove")
+                                        || name_lower.contains("setup")
+                                        || name_lower.contains("install")
+                                        || name_lower.contains("update")
+                                        || name_lower.contains("crash")
+                                        || name_lower.contains("repair")
+                                        || name_lower.contains("helper")
+                                        || name_lower.contains("service")
+                                        || name_lower.contains("daemon")
+                                        || name_lower.contains("worker")
+                                        || name_lower.starts_with("qt")
+                                        || name_lower == "cmd";
+
+                                    if !is_system {
                                         apps.push(InstalledApp {
                                             name,
                                             path: sub_path.to_string_lossy().to_string(),
@@ -150,6 +165,18 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps.dedup_by(|a, b| a.path == b.path);
+    // 同一目录只保留一个应用
+    {
+        let mut seen_dirs = std::collections::HashSet::new();
+        apps.retain(|app| {
+            if let Some(parent) = std::path::Path::new(&app.path).parent() {
+                let dir_key = parent.to_string_lossy().to_lowercase();
+                seen_dirs.insert(dir_key)
+            } else {
+                true
+            }
+        });
+    }
     apps
 }
 
@@ -345,69 +372,93 @@ fn set_close_behavior(app: tauri::AppHandle, minimize_to_tray: bool) -> Result<(
 
 struct CloseBehavior(std::sync::atomic::AtomicBool);
 
-/// 下载更新文件（带进度事件）
+/// 下载更新文件（使用系统 curl，跨平台可靠）
 #[tauri::command]
 async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, String> {
-    use futures_util::StreamExt;
-    use tokio::io::AsyncWriteExt;
-
     // 确定下载路径
     let ext = if url.contains(".dmg") { ".dmg" } else { ".exe" };
     let filename = format!("update_{}{}", std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(), ext);
-    let download_dir = std::env::temp_dir().join(&filename);
-
-    let response = reqwest::get(&url).await.map_err(|e| format!("下载请求失败: {}", e))?;
-    let total_size = response.content_length().unwrap_or(0);
+    let download_path = std::env::temp_dir().join(&filename);
+    let download_path_str = download_path.to_string_lossy().to_string();
 
     // 发送开始事件
     let _ = app.emit("download-progress", serde_json::json!({
         "status": "downloading",
         "downloaded": 0u64,
-        "total": total_size,
+        "total": 0u64,
         "speed": 0u64,
-        "path": download_dir.to_string_lossy().to_string()
+        "path": &download_path_str
     }));
 
-    let mut file = tokio::fs::File::create(&download_dir).await
-        .map_err(|e| format!("创建文件失败: {}", e))?;
-    let mut stream = response.bytes_stream();
-    let mut downloaded: u64 = 0;
-    let start_time = std::time::Instant::now();
-    let mut last_emit = std::time::Instant::now();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("下载数据错误: {}", e))?;
-        file.write_all(&chunk).await.map_err(|e| format!("写入文件失败: {}", e))?;
-        downloaded += chunk.len() as u64;
-
-        // 每200ms发送一次进度
-        if last_emit.elapsed().as_millis() > 200 {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
-            let _ = app.emit("download-progress", serde_json::json!({
-                "status": "downloading",
-                "downloaded": downloaded,
-                "total": total_size,
-                "speed": speed,
-                "path": download_dir.to_string_lossy().to_string()
-            }));
-            last_emit = std::time::Instant::now();
+    // 启动进度监控线程（通过文件大小监控下载进度）
+    let app_clone = app.clone();
+    let path_clone = download_path_str.clone();
+    let progress_handle = std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if let Ok(meta) = std::fs::metadata(&path_clone) {
+                let size = meta.len();
+                let elapsed = start.elapsed().as_secs_f64();
+                let speed = if elapsed > 0.0 { (size as f64 / elapsed) as u64 } else { 0 };
+                let _ = app_clone.emit("download-progress", serde_json::json!({
+                    "status": "downloading",
+                    "downloaded": size,
+                    "total": 0u64,
+                    "speed": speed,
+                    "path": &path_clone
+                }));
+            }
+            // 检查文件是否还在被写入（最多等5分钟）
+            if start.elapsed().as_secs() > 300 {
+                break;
+            }
         }
+    });
+
+    // 使用系统 curl 下载（Mac/Win10+ 都自带 curl）
+    let curl_result = tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new("curl")
+                .args(["-L", "-o", &download_path.to_string_lossy(), &url, "--connect-timeout", "30", "--max-time", "300"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Command::new("curl")
+                .args(["-L", "-o", &download_path.to_string_lossy(), &url, "--connect-timeout", "30", "--max-time", "300"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+        }
+    }).await.map_err(|e| format!("下载任务失败: {}", e))?;
+
+    // 停止进度监控
+    let _ = progress_handle;
+
+    match curl_result {
+        Ok(status) if status.success() => {
+            // 获取最终文件大小
+            let final_size = std::fs::metadata(&download_path_str).map(|m| m.len()).unwrap_or(0);
+            let _ = app.emit("download-progress", serde_json::json!({
+                "status": "completed",
+                "downloaded": final_size,
+                "total": final_size,
+                "speed": 0u64,
+                "path": &download_path_str
+            }));
+            Ok(download_path_str)
+        }
+        Ok(_) => Err("下载失败: curl 返回错误".to_string()),
+        Err(e) => Err(format!("下载失败: {}", e)),
     }
-
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
-
-    // 发送完成事件
-    let _ = app.emit("download-progress", serde_json::json!({
-        "status": "completed",
-        "downloaded": downloaded,
-        "total": total_size,
-        "speed": 0u64,
-        "path": download_dir.to_string_lossy().to_string()
-    }));
-
-    Ok(download_dir.to_string_lossy().to_string())
 }
 
 /// 安装更新并重启
@@ -422,23 +473,21 @@ async fn install_update(app: tauri::AppHandle, file_path: String) -> Result<Stri
             .map_err(|e| format!("打开安装包失败: {}", e))?;
         // 延迟退出，让用户看到提示
         let app_clone = app.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
             app_clone.exit(0);
         });
     }
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        // Windows: 运行 .exe 安装程序
-        Command::new(&file_path)
-            .creation_flags(CREATE_NO_WINDOW)
+        // Windows: 运行 NSIS .exe 安装程序
+        Command::new("cmd")
+            .args(["/C", "start", "", &file_path])
             .spawn()
             .map_err(|e| format!("运行安装程序失败: {}", e))?;
         let app_clone = app.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
             app_clone.exit(0);
         });
     }

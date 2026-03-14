@@ -41,7 +41,7 @@ const UpdateChecker: React.FC = () => {
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        // 动态获取应用版本号（从 tauri.conf.json 读取）
+        // 动态获取应用版本号
         let appVersion = '0.1.0';
         try {
           appVersion = await getVersion();
@@ -57,6 +57,13 @@ const UpdateChecker: React.FC = () => {
         );
         const data: UpdateInfo = await resp.json();
         if (data.hasUpdate) {
+          // 检查是否已经跳过或已安装此版本
+          const skippedVersion = localStorage.getItem('skipped_update_version');
+          const installedVersion = localStorage.getItem('installed_update_version');
+          if (skippedVersion === data.version || installedVersion === data.version) {
+            // 已跳过或已安装过，不再提示（除非是强制更新）
+            if (!data.forceUpdate) return;
+          }
           setUpdateInfo(data);
         }
       } catch (e) {
@@ -64,7 +71,6 @@ const UpdateChecker: React.FC = () => {
       }
     };
 
-    // 启动后3秒检查更新
     const timer = setTimeout(checkForUpdates, 3000);
     return () => clearTimeout(timer);
   }, []);
@@ -89,7 +95,6 @@ const UpdateChecker: React.FC = () => {
     setDownloading(true);
     setError('');
     try {
-      // 拼接完整下载URL
       const fullUrl = updateInfo.downloadUrl.startsWith('http')
         ? updateInfo.downloadUrl
         : `${API_BASE}${updateInfo.downloadUrl}`;
@@ -97,11 +102,14 @@ const UpdateChecker: React.FC = () => {
       // 调用 Rust 下载命令
       const filePath = await invoke<string>('download_update', { url: fullUrl });
 
+      // 记录已安装版本，避免重复提示
+      localStorage.setItem('installed_update_version', updateInfo.version);
+
       // 下载完成，自动安装
       setInstalling(true);
       await invoke('install_update', { filePath });
     } catch (e: any) {
-      setError(e.toString());
+      setError(typeof e === 'string' ? e : e.toString());
       setDownloading(false);
       setInstalling(false);
     }
@@ -109,6 +117,8 @@ const UpdateChecker: React.FC = () => {
 
   const handleDismiss = () => {
     if (updateInfo.forceUpdate) return;
+    // 记录跳过的版本
+    localStorage.setItem('skipped_update_version', updateInfo.version);
     setDismissed(true);
   };
 
@@ -140,7 +150,6 @@ const UpdateChecker: React.FC = () => {
             </div>
           )}
 
-          {/* 下载进度 */}
           {downloading && progress && (
             <div className="download-progress-box">
               <div className="download-progress-bar">
@@ -154,7 +163,6 @@ const UpdateChecker: React.FC = () => {
             </div>
           )}
 
-          {/* 安装中 */}
           {installing && (
             <div className="install-notice">
               <span className="install-spinner"></span>
@@ -162,7 +170,6 @@ const UpdateChecker: React.FC = () => {
             </div>
           )}
 
-          {/* 错误 */}
           {error && <p className="update-error">{error}</p>}
 
           {updateInfo.forceUpdate && !downloading && !installing && (

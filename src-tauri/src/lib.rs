@@ -145,7 +145,9 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                                         || name_lower.contains("daemon")
                                         || name_lower.contains("worker")
                                         || name_lower.starts_with("qt")
-                                        || name_lower == "cmd";
+                                        || name_lower == "cmd"
+                                        || name.starts_with("卸载")
+                                        || name.starts_with("Uninstall");
 
                                     if !is_system {
                                         apps.push(InstalledApp {

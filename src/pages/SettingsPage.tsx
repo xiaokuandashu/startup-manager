@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { getVersion } from '@tauri-apps/api/app';
 
 interface UserInfo {
   id: string;
@@ -24,6 +27,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray'); // 默认最小化到托盘
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [appVersion, setAppVersion] = useState('0.2.4');
+  const [updateStatus, setUpdateStatus] = useState<'idle'|'checking'|'downloading'|'installing'|'up-to-date'|'error'>('idle');
+  const [updateMsg, setUpdateMsg] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   useEffect(() => {
     const init = async () => {
@@ -113,6 +120,75 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     setHasChanges(false);
     setSaveMsg('✅ 设置已保存');
     setTimeout(() => setSaveMsg(''), 2000);
+  };
+
+  // 加载动态版本号
+  useEffect(() => {
+    (async () => {
+      try {
+        const v = await getVersion();
+        setAppVersion(v);
+      } catch {}
+    })();
+  }, []);
+
+  // 监听下载进度
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    (async () => {
+      unlisten = await listen<any>('download-progress', (event) => {
+        const p = event.payload;
+        if (p.total > 0) {
+          setDownloadProgress(Math.round((p.downloaded / p.total) * 100));
+        } else if (p.downloaded > 0) {
+          setDownloadProgress(-1); // 未知总大小
+        }
+        if (p.status === 'completed') {
+          setUpdateStatus('installing');
+          setUpdateMsg('下载完成，正在安装...');
+        }
+      });
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  const API_BASE = 'http://aacc.fun:3001';
+
+  // 检查更新
+  const handleCheckUpdate = async () => {
+    setUpdateStatus('checking');
+    setUpdateMsg('');
+    try {
+      const platform = isMac ? 'macos' : 'windows';
+      const resp = await fetch(`${API_BASE}/api/updates/check?platform=${platform}&version=${appVersion}`);
+      const data = await resp.json();
+      if (!data.hasUpdate) {
+        setUpdateStatus('up-to-date');
+        setUpdateMsg('当前已是最新版本');
+        setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 3000);
+        return;
+      }
+
+      // 有更新，开始下载
+      setUpdateStatus('downloading');
+      setDownloadProgress(0);
+      setUpdateMsg(`发现新版本 v${data.version}，正在下载...`);
+
+      const fullUrl = data.downloadUrl.startsWith('http') ? data.downloadUrl : `${API_BASE}${data.downloadUrl}`;
+      const filePath = await invoke<string>('download_update', { url: fullUrl });
+
+      // 记录已安装版本
+      localStorage.setItem('installed_update_version', data.version);
+
+      // 自动安装
+      setUpdateStatus('installing');
+      setUpdateMsg('安装中，应用即将重启...');
+      await invoke('install_update', { filePath });
+    } catch (e: any) {
+      setUpdateStatus('error');
+      setUpdateMsg(`更新失败: ${typeof e === 'string' ? e : e.toString()}`);
+      setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 5000);
+    }
   };
 
   // 绑定手机号显示
@@ -240,9 +316,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           </div>
           <div className="setting-item">
             <span>当前版本</span>
-            <span className="tag-gray">v0.1.0</span>
+            <span className="tag-gray">v{appVersion}</span>
           </div>
-          <button className="btn-check-update">检查更新</button>
+          <button className="btn-check-update" onClick={handleCheckUpdate} disabled={updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing'}>
+            {updateStatus === 'checking' ? '检查中...' : updateStatus === 'downloading' ? `下载中 ${downloadProgress}%` : updateStatus === 'installing' ? '安装中...' : updateStatus === 'up-to-date' ? '已是最新版本' : '检查更新'}
+          </button>
+          {updateMsg && <p style={{ fontSize: '12px', color: updateStatus === 'error' ? '#ef4444' : '#16a34a', marginTop: '8px' }}>{updateMsg}</p>}
         </div>
 
         {/* 协议 */}

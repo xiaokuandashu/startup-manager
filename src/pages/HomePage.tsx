@@ -311,6 +311,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
             level: 'info',
             statusText: newEnabled ? '已启用' : '已禁用',
             fileExt: t.fileExt,
+            icon: t.icon,
           });
           return { ...t, enabled: newEnabled };
         }

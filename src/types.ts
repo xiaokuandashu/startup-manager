@@ -29,6 +29,7 @@ export interface LogEntry {
   level: 'info' | 'warning' | 'error' | 'success';
   statusText: string;
   fileExt?: string;
+  icon?: string;
 }
 
 export type PageType = 'home' | 'log' | 'settings';

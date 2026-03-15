@@ -152,7 +152,7 @@ const App: React.FC = () => {
             lang={lang}
           />
         )}
-        {currentPage === 'log' && <LogPage searchQuery={searchQuery} />}
+        {currentPage === 'log' && <LogPage searchQuery={searchQuery} lang={lang} />}
         {currentPage === 'settings' && (
           <SettingsPage
             onBack={() => setCurrentPage('home')}

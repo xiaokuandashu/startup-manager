@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import TaskRow from './TaskRow';
 import { t, Language } from '../i18n';
@@ -38,14 +38,63 @@ const TaskTable: React.FC<TaskTableProps> = ({
   onBatchExport,
   lang = 'zh',
 }) => {
+  const [filterTaskType, setFilterTaskType] = useState<string>('');
+  const [filterCycleType, setFilterCycleType] = useState<string>('');
+  const [showTaskTypeFilter, setShowTaskTypeFilter] = useState(false);
+  const [showCycleTypeFilter, setShowCycleTypeFilter] = useState(false);
+  const taskTypeRef = useRef<HTMLDivElement>(null);
+  const cycleTypeRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (taskTypeRef.current && !taskTypeRef.current.contains(e.target as Node)) setShowTaskTypeFilter(false);
+      if (cycleTypeRef.current && !cycleTypeRef.current.contains(e.target as Node)) setShowCycleTypeFilter(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Get unique types for filter options
+  const allLabel = lang === 'zh' ? '全部' : 'All';
+  const taskTypes = Array.from(new Set(filteredTasks.map(t => t.taskType).filter(Boolean)));
+  const cycleTypes = Array.from(new Set(filteredTasks.map(t => t.timeType).filter(Boolean)));
+
+  // Apply filters
+  let displayTasks = filteredTasks;
+  if (filterTaskType) displayTasks = displayTasks.filter(t => t.taskType === filterTaskType);
+  if (filterCycleType) displayTasks = displayTasks.filter(t => t.timeType === filterCycleType);
+
   return (
     <div className="task-table-container">
       <div className="task-table">
         <div className="task-table-header">
           <div className="task-cell"></div>
           <div className="task-cell task-name-cell">{t('taskName', lang)}</div>
-          <div className="task-cell filter-cell">{t('taskType', lang)} <span className="filter-arrow">▾</span></div>
-          <div className="task-cell filter-cell">{t('cycleType', lang)} <span className="filter-arrow">▾</span></div>
+          {/* Task Type Filter */}
+          <div className="task-cell filter-cell" ref={taskTypeRef} style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowTaskTypeFilter(!showTaskTypeFilter)}>
+            {t('taskType', lang)} <span className="filter-arrow">▾</span>
+            {showTaskTypeFilter && (
+              <div className="filter-dropdown">
+                <div className={`filter-option ${!filterTaskType ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setFilterTaskType(''); setShowTaskTypeFilter(false); }}>{allLabel}</div>
+                {taskTypes.map(type => (
+                  <div key={type} className={`filter-option ${filterTaskType === type ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setFilterTaskType(type); setShowTaskTypeFilter(false); }}>{type}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Cycle Type Filter */}
+          <div className="task-cell filter-cell" ref={cycleTypeRef} style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowCycleTypeFilter(!showCycleTypeFilter)}>
+            {t('cycleType', lang)} <span className="filter-arrow">▾</span>
+            {showCycleTypeFilter && (
+              <div className="filter-dropdown">
+                <div className={`filter-option ${!filterCycleType ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setFilterCycleType(''); setShowCycleTypeFilter(false); }}>{allLabel}</div>
+                {cycleTypes.map(type => (
+                  <div key={type} className={`filter-option ${filterCycleType === type ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setFilterCycleType(type); setShowCycleTypeFilter(false); }}>{type}</div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="task-cell">{t('executionTime', lang)}</div>
           <div className="task-cell">{t('nextRun', lang)}</div>
           <div className="task-cell">{t('selectPath', lang)}</div>
@@ -65,7 +114,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
         </div>
 
         <div className="task-table-body">
-          {filteredTasks.length === 0 ? (
+          {displayTasks.length === 0 ? (
             <div className="empty-state">
               <div className="empty-illustration" style={{ position: 'relative', display: 'inline-block' }}>
                 <img src="/icon/picture_nonoe.svg" alt="empty" width="200" height="200" style={{ opacity: 0.8 }} />
@@ -73,7 +122,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
               </div>
             </div>
           ) : (
-            filteredTasks.map(task => (
+            displayTasks.map(task => (
               <TaskRow
                 key={task.id}
                 task={task}

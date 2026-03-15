@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { LogEntry } from '../types';
+import { Language } from '../i18n';
 
 interface LogPageProps {
   searchQuery: string;
+  lang?: Language;
 }
 
 const LOGS_STORAGE_KEY = 'task_execution_logs';
@@ -16,7 +18,7 @@ const loadAllLogs = (): LogEntry[] => {
   return [];
 };
 
-const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
+const LogPage: React.FC<LogPageProps> = ({ searchQuery, lang = 'zh' }) => {
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -41,8 +43,21 @@ const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
   // Calendar calculations
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
-  const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-  const weekHeaders = ['日', '一', '二', '三', '四', '五', '六'];
+
+  // i18n month and week names
+  const getMonthNames = () => {
+    if (lang === 'zh') return ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+    if (lang === 'ja') return ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  };
+  const getWeekHeaders = () => {
+    if (lang === 'zh') return ['日', '一', '二', '三', '四', '五', '六'];
+    if (lang === 'ja') return ['日', '月', '火', '水', '木', '金', '土'];
+    if (lang === 'ko') return ['일', '월', '화', '수', '목', '금', '토'];
+    return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  };
+  const monthNames = getMonthNames();
+  const weekHeaders = getWeekHeaders();
 
   // 检查某天是否有日志
   const hasLogsOnDay = (day: number): boolean => {
@@ -77,13 +92,29 @@ const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
     '.app': '#42A5F5', '.bat': '#FF9800', '.exe': '#8BC34A', '.sh': '#FF9800',
   };
 
+  // i18n labels
+  const recordsLabel = lang === 'zh' ? '条记录' : lang === 'ja' ? '件の記録' : lang === 'ko' ? '개 기록' : ' records';
+  const noLogsLabel = lang === 'zh' ? '当日无日志记录' : lang === 'ja' ? 'この日のログはありません' : lang === 'ko' ? '이 날 로그 없음' : 'No logs for this day';
+  const yearLabel = lang === 'zh' || lang === 'ja' ? '年' : '/';
+  const monthLabel = lang === 'zh' || lang === 'ja' ? '月' : '/';
+  const dayLabel = lang === 'zh' || lang === 'ja' ? '日' : '';
+
+  const formatDateTitle = () => {
+    if (lang === 'zh' || lang === 'ja') return `${currentYear}${yearLabel}${currentMonth + 1}${monthLabel}${selectedDay}${dayLabel}`;
+    return `${currentYear}/${currentMonth + 1}/${selectedDay}`;
+  };
+  const formatMonthNav = () => {
+    if (lang === 'zh' || lang === 'ja') return `${currentYear}${yearLabel}${currentMonth + 1}${monthLabel}`;
+    return `${monthNames[currentMonth]} ${currentYear}`;
+  };
+
   return (
     <div className="log-page-v2">
       {/* Left: Calendar */}
       <div className="log-calendar">
         <div className="calendar-nav">
           <button className="cal-nav-btn" onClick={prevMonth}>← {monthNames[currentMonth === 0 ? 11 : currentMonth - 1]}</button>
-          <span className="cal-current-month">{currentYear}年{currentMonth + 1}月</span>
+          <span className="cal-current-month">{formatMonthNav()}</span>
           <button className="cal-nav-btn" onClick={nextMonth}>{monthNames[currentMonth === 11 ? 0 : currentMonth + 1]} →</button>
         </div>
         <div className="calendar-grid">
@@ -106,11 +137,11 @@ const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
       {/* Right: Timeline */}
       <div className="log-timeline-panel">
         <h3 className="timeline-date-title">
-          {currentYear}年{currentMonth + 1}月{selectedDay}日 · {filteredLogs.length}条记录
+          {formatDateTitle()} · {filteredLogs.length}{recordsLabel}
         </h3>
         {filteredLogs.length === 0 ? (
           <div className="timeline-empty">
-            <p>当日无日志记录</p>
+            <p>{noLogsLabel}</p>
           </div>
         ) : (
           <div className="timeline-list">
@@ -122,9 +153,13 @@ const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
                 </div>
                 <div className="timeline-content">
                   <div className="timeline-header">
-                    <span className="file-ext-badge" style={{ backgroundColor: extColorMap[log.fileExt || '.exe'] || '#8BC34A' }}>
-                      {log.fileExt || '.exe'}
-                    </span>
+                    {log.icon && log.icon.startsWith('data:image') ? (
+                      <img src={log.icon} alt={log.taskName} className="task-real-icon" style={{ width: 24, height: 24, marginRight: 8 }} />
+                    ) : (
+                      <span className="file-ext-badge" style={{ backgroundColor: extColorMap[log.fileExt || '.exe'] || '#8BC34A', width: 24, height: 24, fontSize: 9 }}>
+                        {log.fileExt || '.exe'}
+                      </span>
+                    )}
                     <span className="timeline-task-name">{log.taskName}</span>
                     <span className="timeline-timestamp">{log.timestamp?.split(' ')[1] || ''}</span>
                   </div>
@@ -132,7 +167,7 @@ const LogPage: React.FC<LogPageProps> = ({ searchQuery }) => {
                     <span className="timeline-task-type">{log.taskType}</span>
                     <span className="timeline-time-type">{log.timeType}</span>
                     <span className="timeline-exec-time">{log.executeTime}</span>
-                    <span className={`status-tag ${log.statusText?.includes('失败') ? 'error' : 'success'}`}>
+                    <span className={`status-tag ${log.statusText?.includes('失败') || log.statusText?.includes('error') || log.statusText?.includes('Error') ? 'error' : 'success'}`}>
                       {log.statusText}
                     </span>
                   </div>

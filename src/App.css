@@ -3,6 +3,7 @@
    ======================================== */
 
 :root {
+  --theme-transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   --bg-primary: #f0f2f5;
   --bg-card: #ffffff;
   --bg-header: #ffffff;
@@ -51,6 +52,7 @@ body {
   line-height: 1.5;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  transition: var(--theme-transition);
 }
 
 /* ========================================
@@ -356,10 +358,10 @@ body {
 .task-row:hover { background: #fafafa; }
 .task-row.selected { background: #EBF5FF; }
 
-.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-all; line-height: 1.5; padding: 6px 4px; display: flex; align-items: center; align-self: center; }
+.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-all; line-height: 1.5; padding: 6px 4px; display: flex; align-items: center; align-self: center; min-height: 40px; }
 .task-icon-cell { display: flex; align-items: center; justify-content: center; align-self: center; }
 .task-name-cell { display: flex; align-items: center; align-self: center; }
-.task-path-cell { max-width: 120px; }
+.task-path-cell { max-width: 120px; align-self: center; }
 .task-note-cell { align-self: center; }
 
 .file-ext-badge {
@@ -379,7 +381,7 @@ body {
 .status-tag.error { color: var(--accent-red); }
 .status-tag.pending { color: var(--text-muted); }
 
-.task-status-cell { display: flex; align-items: center; }
+.task-status-cell { display: flex; align-items: center; align-self: center; }
 
 .plan-limited {
   position: absolute; top: 0; right: 0;
@@ -388,7 +390,7 @@ body {
   border-radius: 0 var(--radius-sm) 0 var(--radius-sm);
 }
 
-.task-actions-cell { display: flex; align-items: center; gap: 8px; }
+.task-actions-cell { display: flex; align-items: center; gap: 8px; align-self: center; }
 .action-link {
   border: none; background: none;
   font-size: 13px; color: var(--text-secondary);

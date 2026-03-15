@@ -28,15 +28,9 @@ const getSystemTheme = (): 'light' | 'dark' => {
 const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark', isAuto: boolean = false) => {
   try {
     if ((window as any).__TAURI_INTERNALS__) {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const win = getCurrentWindow();
-      if (isAuto) {
-        // Follow system: pass null to let OS decide
-        await win.setTheme(null);
-      } else {
-        // Explicit light or dark
-        await win.setTheme(resolvedTheme as any);
-      }
+      const { invoke } = await import('@tauri-apps/api/core');
+      const theme = isAuto ? 'auto' : resolvedTheme;
+      await invoke('set_window_theme', { theme });
     }
   } catch (e) {
     console.error('Set titlebar theme failed:', e);

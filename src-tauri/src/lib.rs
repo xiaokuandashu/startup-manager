@@ -151,7 +151,8 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
                                     if !is_system {
                                         // Filter garbled names
-                                        let has_garbled = name.contains('\u{FFFD}') || name.len() < 2;
+                                        let has_garbled = name.contains('\u{FFFD}') || name.len() < 2
+                                            || name.chars().any(|c| c.is_control());
                                         if !has_garbled {
                                             apps.push(InstalledApp {
                                                 name,
@@ -171,7 +172,8 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps.dedup_by(|a, b| a.path == b.path);
-    // 同一目录只保留一个应用
+    // Windows only: 同一目录只保留一个应用 (Mac apps are all in /Applications, so skip)
+    #[cfg(target_os = "windows")]
     {
         let mut seen_dirs = std::collections::HashSet::new();
         apps.retain(|app| {
@@ -538,6 +540,19 @@ async fn install_update(app: tauri::AppHandle, file_path: String) -> Result<Stri
     Ok("安装中...".to_string())
 }
 
+/// 设置窗口标题栏主题
+#[tauri::command]
+async fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        match theme.as_str() {
+            "dark" => { let _ = window.set_theme(Some(tauri::Theme::Dark)); }
+            "light" => { let _ = window.set_theme(Some(tauri::Theme::Light)); }
+            _ => { let _ = window.set_theme(None); } // auto / follow system
+        }
+    }
+    Ok(())
+}
+
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -578,7 +593,8 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
                     || name_lower.contains("repair");
                 if !is_uninstall {
                     // Filter out garbled/unreadable names
-                    let has_garbled = name.contains('\u{FFFD}') || name.len() < 2;
+                    let has_garbled = name.contains('\u{FFFD}') || name.len() < 2
+                        || name.chars().any(|c| c.is_control());
                     if !has_garbled {
                         apps.push(InstalledApp {
                             name,
@@ -619,6 +635,7 @@ pub fn run() {
             get_platform_info,
             launch_app,
             set_close_behavior,
+            set_window_theme,
             check_update,
             download_update,
             install_update

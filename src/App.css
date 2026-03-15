@@ -336,7 +336,7 @@ body {
 }
 .task-table-header {
   display: grid;
-  grid-template-columns: 40px 110px 80px 80px 130px 130px 130px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 130px 100px 100px 150px 130px 130px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 12px 16px;
   background: #fafafa;
@@ -348,7 +348,7 @@ body {
 .task-table-body { min-height: 200px; }
 .task-row {
   display: grid;
-  grid-template-columns: 40px 110px 80px 80px 130px 130px 130px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 130px 100px 100px 150px 130px 130px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid #f5f5f5;
@@ -1389,6 +1389,7 @@ body {
 }
 [data-theme="dark"] .type-tab { background: var(--bg-card); color: var(--text-secondary); }
 [data-theme="dark"] .type-tab.active { background: var(--accent-blue); color: white; }
+[data-theme="dark"] .task-row { border-bottom-color: #2d333b; }
 [data-theme="dark"] .task-row:hover { background: #1c2333; }
 [data-theme="dark"] .task-row.selected { background: #1a2744; }
 [data-theme="dark"] .task-table-header { background: #1c2128; }

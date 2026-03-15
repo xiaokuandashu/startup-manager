@@ -204,6 +204,7 @@ const exportTaskConfig = (task: StartupTask) => {
     level: 'info',
     statusText: '导出成功',
     fileExt: task.fileExt,
+    icon: task.icon,
   });
 };
 
@@ -258,6 +259,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
               level: success ? 'success' : 'error',
               statusText,
               fileExt: task.fileExt,
+              icon: task.icon,
             });
 
             setTasks(prev => prev.map(t => {
@@ -367,6 +369,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         level: 'info',
         statusText: '已复制',
         fileExt: copied.fileExt,
+        icon: copied.icon,
       });
     }
   }, [tasks]);
@@ -385,6 +388,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         level: 'warning',
         statusText: '已删除',
         fileExt: task.fileExt,
+        icon: task.icon,
       });
     }
     setTasks(prev => prev.filter(t => t.id !== id));
@@ -443,6 +447,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
       level: 'info',
       statusText: editingTask ? '已编辑' : '已添加',
       fileExt: newTask.fileExt,
+      icon: newTask.icon,
     });
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
+import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 
 interface UserInfo {
   id: string;
@@ -17,24 +18,25 @@ interface SettingsPageProps {
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   user: UserInfo | null;
+  onLanguageChange?: (lang: Language) => void;
 }
 
 const isTauriEnv = () => !!(window as any).__TAURI_INTERNALS__;
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeModeChange, user }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeModeChange, user, onLanguageChange }) => {
   const [isMac, setIsMac] = useState(false);
-  const [autoStart, setAutoStart] = useState(true); // 默认开启
-  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray'); // 默认最小化到托盘
+  const [autoStart, setAutoStart] = useState(true);
+  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray');
   const [hasChanges, setHasChanges] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [appVersion, setAppVersion] = useState('0.2.7');
   const [updateStatus, setUpdateStatus] = useState<'idle'|'checking'|'downloading'|'installing'|'up-to-date'|'error'>('idle');
   const [updateMsg, setUpdateMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [lang, setLang] = useState<Language>(getCurrentLanguage());
 
   useEffect(() => {
     const init = async () => {
-      // 检测平台
       try {
         if (isTauriEnv()) {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -47,7 +49,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         setIsMac(navigator.platform.toLowerCase().includes('mac'));
       }
 
-      // 加载自启动状态
       if (isTauriEnv()) {
         try {
           const { isEnabled } = await import('@tauri-apps/plugin-autostart');
@@ -58,15 +59,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         }
       }
 
-      // 加载关闭行为
       const saved = localStorage.getItem('closeBehavior');
       if (saved === 'exit') {
         setCloseBehavior('exit');
       } else {
-        setCloseBehavior('tray'); // 默认最小化到托盘
+        setCloseBehavior('tray');
       }
 
-      // 初始化关闭行为到 Rust
       if (isTauriEnv()) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -80,21 +79,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     init();
   }, []);
 
-  // 自启动切换
   const handleAutoStartToggle = (checked: boolean) => {
     setAutoStart(checked);
     setHasChanges(true);
   };
 
-  // 关闭行为切换
   const handleCloseBehaviorChange = (behavior: 'tray' | 'exit') => {
     setCloseBehavior(behavior);
     setHasChanges(true);
   };
 
-  // 保存设置
+  const handleLanguageChange = (newLang: Language) => {
+    setLang(newLang);
+    setCurrentLanguage(newLang);
+    onLanguageChange?.(newLang);
+    setHasChanges(true);
+  };
+
   const handleSave = async () => {
-    // 保存自启动
     if (isTauriEnv()) {
       try {
         const { enable, disable } = await import('@tauri-apps/plugin-autostart');
@@ -107,7 +109,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         console.error('Autostart toggle failed:', e);
       }
 
-      // 保存关闭行为
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('set_close_behavior', { minimizeToTray: closeBehavior === 'tray' });
@@ -118,11 +119,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
 
     localStorage.setItem('closeBehavior', closeBehavior);
     setHasChanges(false);
-    setSaveMsg('✅ 设置已保存');
+    setSaveMsg(t('settingsSaved', lang));
     setTimeout(() => setSaveMsg(''), 2000);
   };
 
-  // 加载动态版本号
   useEffect(() => {
     (async () => {
       try {
@@ -132,7 +132,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     })();
   }, []);
 
-  // 监听下载进度
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     (async () => {
@@ -141,28 +140,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         if (p.total > 0) {
           setDownloadProgress(Math.round((p.downloaded / p.total) * 100));
         } else if (p.downloaded > 0) {
-          setDownloadProgress(-1); // 未知总大小
+          setDownloadProgress(-1);
         }
         if (p.status === 'completed') {
           setUpdateStatus('installing');
-          setUpdateMsg('下载完成，正在安装...');
+          setUpdateMsg(t('installing', lang));
         }
       });
     })();
     return () => { if (unlisten) unlisten(); };
-  }, []);
+  }, [lang]);
 
-  // 检查更新
   const handleCheckUpdate = async () => {
     setUpdateStatus('checking');
     setUpdateMsg('');
     try {
       const platform = isMac ? 'macos' : 'windows';
-      // 使用 Rust 命令检查更新（绕过 Mac WebView HTTP 限制）
       const jsonStr = await invoke<string>('check_update', { platform, version: appVersion });
       const data = JSON.parse(jsonStr);
 
-      // 比较版本号
       const compareVer = (a: string, b: string): number => {
         const pa = a.replace(/^v/, '').split('.').map(Number);
         const pb = b.replace(/^v/, '').split('.').map(Number);
@@ -175,47 +171,41 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         return 0;
       };
 
-      // 当前版本 >= 服务端版本，提示已是最新
       if (!data.hasUpdate || compareVer(appVersion, data.version) >= 0) {
         setUpdateStatus('up-to-date');
-        setUpdateMsg(`当前版本 v${appVersion} 已是最新版本，暂无更新`);
+        setUpdateMsg(`${t('currentVersion', lang)} v${appVersion} ${t('upToDate', lang)}`);
         setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 5000);
         return;
       }
 
-      // 有更新，开始下载
       setUpdateStatus('downloading');
       setDownloadProgress(0);
-      setUpdateMsg(`发现新版本 v${data.version}（当前 v${appVersion}），正在下载...`);
+      setUpdateMsg(`${t('downloading', lang)}... v${data.version}`);
 
       const API_BASE = 'http://aacc.fun:3001';
       const fullUrl = data.downloadUrl.startsWith('http') ? data.downloadUrl : `${API_BASE}${data.downloadUrl}`;
       const filePath = await invoke<string>('download_update', { url: fullUrl });
 
-      // 记录已安装版本
       localStorage.setItem('installed_update_version', data.version);
 
-      // 自动安装
       setUpdateStatus('installing');
-      setUpdateMsg('安装中，应用即将重启...');
+      setUpdateMsg(t('installing', lang));
       await invoke('install_update', { filePath });
     } catch (e: any) {
-      const errMsg = typeof e === 'string' ? e : (e?.message || e?.toString() || '未知错误');
+      const errMsg = typeof e === 'string' ? e : (e?.message || e?.toString() || 'Unknown error');
       setUpdateStatus('error');
-      setUpdateMsg(`更新失败: ${errMsg}`);
+      setUpdateMsg(`Error: ${errMsg}`);
       setTimeout(() => { setUpdateStatus('idle'); setUpdateMsg(''); }, 8000);
     }
   };
 
-  // 绑定手机号显示
   const phoneDisplay = user?.phone
     ? user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-    : '未绑定';
+    : t('notBound', lang);
 
-  // 激活码状态
   const vipDisplay = user?.vipStatus === 'active'
-    ? `已激活 (${user.vipExpireDate || '永久'})`
-    : '未激活';
+    ? `${t('activated', lang)} (${user.vipExpireDate || t('permanent', lang)})`
+    : t('notActivated', lang);
 
   return (
     <div className="settings-page">
@@ -224,7 +214,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          设置
+          {t('settings', lang)}
         </button>
         <div className="settings-header-right">
           {saveMsg && <span className="save-msg">{saveMsg}</span>}
@@ -233,7 +223,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             onClick={handleSave}
             disabled={!hasChanges}
           >
-            保存设置
+            {t('saveSettings', lang)}
           </button>
         </div>
       </div>
@@ -241,7 +231,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       <div className="settings-body">
         {/* 主题设置 */}
         <div className="settings-section">
-          <h3 className="section-title">主题设置</h3>
+          <h3 className="section-title">{t('themeSettings', lang)}</h3>
           <div className="theme-options">
             <label
               className={`theme-option ${themeMode === 'light' ? 'active' : ''}`}
@@ -249,7 +239,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             >
               <input type="radio" name="theme" checked={themeMode === 'light'} readOnly />
               <span className="theme-icon">☀️</span>
-              <span>亮色模式</span>
+              <span>{t('lightMode', lang)}</span>
             </label>
             <label
               className={`theme-option ${themeMode === 'dark' ? 'active' : ''}`}
@@ -257,7 +247,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             >
               <input type="radio" name="theme" checked={themeMode === 'dark'} readOnly />
               <span className="theme-icon">🌙</span>
-              <span>暗夜模式</span>
+              <span>{t('darkMode', lang)}</span>
             </label>
             <label
               className={`theme-option ${themeMode === 'auto' ? 'active' : ''}`}
@@ -265,25 +255,42 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             >
               <input type="radio" name="theme" checked={themeMode === 'auto'} readOnly />
               <span className="theme-icon">💻</span>
-              <span>跟随系统</span>
+              <span>{t('followSystem', lang)}</span>
             </label>
+          </div>
+        </div>
+
+        {/* 语言设置 */}
+        <div className="settings-section">
+          <h3 className="section-title">{t('languageSettings', lang)}</h3>
+          <div className="language-options">
+            {LANGUAGES.map(l => (
+              <label
+                key={l.code}
+                className={`language-option ${lang === l.code ? 'active' : ''}`}
+                onClick={() => handleLanguageChange(l.code)}
+              >
+                <input type="radio" name="language" checked={lang === l.code} readOnly />
+                <span className="lang-name">{l.nativeName}</span>
+              </label>
+            ))}
           </div>
         </div>
 
         {/* 基本设置 */}
         <div className="settings-section">
-          <h3 className="section-title">基本设置</h3>
+          <h3 className="section-title">{t('basicSettings', lang)}</h3>
           <label className="checkbox-item">
             <input
               type="checkbox"
               checked={autoStart}
               onChange={(e) => handleAutoStartToggle(e.target.checked)}
             />
-            开机自启动
+            {t('autoStart', lang)}
           </label>
           {!isMac && (
             <>
-              <span className="setting-label">关闭主窗口时</span>
+              <span className="setting-label">{t('closeWindow', lang)}</span>
               <label className="radio-item">
                 <input
                   type="radio"
@@ -291,7 +298,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   checked={closeBehavior === 'tray'}
                   onChange={() => handleCloseBehaviorChange('tray')}
                 />
-                最小化到托盘
+                {t('minimizeToTray', lang)}
               </label>
               <label className="radio-item">
                 <input
@@ -300,7 +307,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   checked={closeBehavior === 'exit'}
                   onChange={() => handleCloseBehaviorChange('exit')}
                 />
-                退出程序
+                {t('exitApp', lang)}
               </label>
             </>
           )}
@@ -308,15 +315,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
 
         {/* 安全设置 */}
         <div className="settings-section">
-          <h3 className="section-title">安全设置</h3>
+          <h3 className="section-title">{t('securitySettings', lang)}</h3>
           <div className="setting-item">
-            <span>绑定手机号</span>
+            <span>{t('boundPhone', lang)}</span>
             <span className={user?.phone ? 'tag-green' : 'tag-gray'}>
               {phoneDisplay}
             </span>
           </div>
           <div className="setting-item">
-            <span>激活码状态</span>
+            <span>{t('activationStatus', lang)}</span>
             <span className={user?.vipStatus === 'active' ? 'tag-green' : 'tag-gray'}>
               {vipDisplay}
             </span>
@@ -325,27 +332,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
 
         {/* 其他 */}
         <div className="settings-section">
-          <h3 className="section-title">其他</h3>
+          <h3 className="section-title">{t('other', lang)}</h3>
           <div className="setting-item">
-            <span>QQ交流群</span>
+            <span>{t('qqGroup', lang)}</span>
             <span className="tag-gray">123456789</span>
           </div>
           <div className="setting-item">
-            <span>当前版本</span>
+            <span>{t('currentVersion', lang)}</span>
             <span className="tag-gray">v{appVersion}</span>
           </div>
           <button className="btn-check-update" onClick={handleCheckUpdate} disabled={updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing'}>
-            {updateStatus === 'checking' ? '检查中...' : updateStatus === 'downloading' ? `下载中 ${downloadProgress}%` : updateStatus === 'installing' ? '安装中...' : updateStatus === 'up-to-date' ? '已是最新版本' : '检查更新'}
+            {updateStatus === 'checking' ? t('checking', lang) : updateStatus === 'downloading' ? `${t('downloading', lang)} ${downloadProgress}%` : updateStatus === 'installing' ? t('installing', lang) : updateStatus === 'up-to-date' ? t('upToDate', lang) : t('checkUpdate', lang)}
           </button>
           {updateMsg && <p style={{ fontSize: '12px', color: updateStatus === 'error' ? '#ef4444' : '#16a34a', marginTop: '8px' }}>{updateMsg}</p>}
         </div>
 
         {/* 协议 */}
         <div className="settings-section">
-          <h3 className="section-title">协议</h3>
+          <h3 className="section-title">{t('agreements', lang)}</h3>
           <div className="agreement-links">
-            <a className="link-underline" href="#">用户协议</a>
-            <a className="link-underline" href="#">隐私政策</a>
+            <a className="link-underline" href="#">{t('userAgreement', lang)}</a>
+            <a className="link-underline" href="#">{t('privacyPolicy', lang)}</a>
           </div>
         </div>
       </div>

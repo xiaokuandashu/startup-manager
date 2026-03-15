@@ -348,6 +348,7 @@ fn launch_app(app_path: String) -> Result<String, String> {
                 .map_err(|e| format!("启动失败: {}", e))?;
         } else {
             Command::new(&app_path)
+                .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .map_err(|e| format!("启动失败: {}", e))?;
         }
@@ -379,10 +380,20 @@ struct CloseBehavior(std::sync::atomic::AtomicBool);
 async fn check_update(platform: String, version: String) -> Result<String, String> {
     let url = format!("http://aacc.fun:3001/api/updates/check?platform={}&version={}", platform, version);
     let result = tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new("curl")
+                .args(["-s", "-L", "--connect-timeout", "10", "--max-time", "15", &url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        };
+        #[cfg(not(target_os = "windows"))]
         let output = Command::new("curl")
             .args(["-s", "-L", "--connect-timeout", "10", "--max-time", "15", &url])
-            .output()
-            .map_err(|e| format!("curl 执行失败: {}", e))?;
+            .output();
+        let output = output.map_err(|e| format!("curl 执行失败: {}", e))?;
         if output.status.success() {
             String::from_utf8(output.stdout)
                 .map_err(|e| format!("响应解析失败: {}", e))
@@ -502,9 +513,12 @@ async fn install_update(app: tauri::AppHandle, file_path: String) -> Result<Stri
     }
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         // Windows: 运行 NSIS .exe 安装程序
         Command::new("cmd")
             .args(["/C", "start", "", &file_path])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| format!("运行安装程序失败: {}", e))?;
         let app_clone = app.clone();

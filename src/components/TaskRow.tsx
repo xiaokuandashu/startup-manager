@@ -69,7 +69,7 @@ const TaskRow: React.FC<TaskRowProps> = ({
         </span>
       </div>
       {/* 开关 */}
-      <div className="task-cell">
+      <div className="task-cell task-toggle-cell">
         <Toggle checked={task.enabled} onChange={() => onToggle(task.id)} />
       </div>
       {/* 操作 */}

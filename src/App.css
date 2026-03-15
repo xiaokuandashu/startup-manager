@@ -381,7 +381,8 @@ body {
 .status-tag.error { color: var(--accent-red); }
 .status-tag.pending { color: var(--text-muted); }
 
-.task-status-cell { display: flex; align-items: center; align-self: center; }
+.task-status-cell { display: flex; align-items: center; align-self: center; justify-content: flex-end; }
+.task-toggle-cell { display: flex; align-items: center; justify-content: flex-end; }
 
 .plan-limited {
   position: absolute; top: 0; right: 0;
@@ -390,7 +391,7 @@ body {
   border-radius: 0 var(--radius-sm) 0 var(--radius-sm);
 }
 
-.task-actions-cell { display: flex; align-items: center; gap: 8px; align-self: center; overflow: visible; position: relative; }
+.task-actions-cell { display: flex; align-items: center; gap: 8px; overflow: visible; position: relative; text-align: right; justify-content: flex-end; }
 .action-link {
   border: none; background: none;
   font-size: 13px; color: var(--text-secondary);
@@ -477,6 +478,10 @@ body {
   z-index: 9999;
   overflow: visible;
   animation: fadeIn 0.15s ease;
+}
+.more-dropdown.open-up {
+  top: auto;
+  bottom: 100%;
 }
 .dropdown-item {
   display: block;

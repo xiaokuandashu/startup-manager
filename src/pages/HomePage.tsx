@@ -178,6 +178,7 @@ const exportTaskConfig = (task: StartupTask) => {
   const config = {
     name: task.name,
     path: task.path,
+    icon: task.icon,
     taskType: task.taskType,
     timeType: task.timeType,
     executeTime: task.executeTime,
@@ -185,11 +186,11 @@ const exportTaskConfig = (task: StartupTask) => {
     enabled: task.enabled,
     fileExt: task.fileExt,
   };
-  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify([config], null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${task.name}_config.json`;
+  a.download = `自启精灵_${task.name}.json`;
   a.click();
   URL.revokeObjectURL(url);
 
@@ -407,6 +408,64 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
     setIsSelectMode(false);
   };
 
+  const handleBatchExport = () => {
+    const selected = tasks.filter(t => selectedTasks.includes(t.id));
+    if (selected.length === 0) return;
+    const configs = selected.map(task => ({
+      name: task.name, path: task.path, icon: task.icon,
+      taskType: task.taskType, timeType: task.timeType,
+      executeTime: task.executeTime, note: task.note,
+      enabled: task.enabled, fileExt: task.fileExt,
+    }));
+    const blob = new Blob([JSON.stringify(configs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = selected.length === 1 ? `自启精灵_${selected[0].name}.json` : '自启精灵_多任务列表.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportTask = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          let data = JSON.parse(ev.target?.result as string);
+          // Support both single object and array format
+          if (!Array.isArray(data)) data = [data];
+          const newTasks: StartupTask[] = data.map((item: any) => ({
+            id: Date.now().toString() + '_' + Math.random().toString(36).slice(2, 6),
+            name: item.name || '导入任务',
+            path: item.path || '',
+            icon: item.icon || '',
+            enabled: item.enabled !== false,
+            type: 'application' as const,
+            taskType: item.taskType || '打开应用',
+            timeType: item.timeType || '计算机启动时',
+            executeTime: item.executeTime || '',
+            timeUntilExec: '',
+            status: 'running' as const,
+            note: item.note || '',
+            statusText: '等待执行',
+            fileExt: item.fileExt || '.exe',
+          }));
+          setTasks(prev => [...prev, ...newTasks]);
+          alert(`成功导入 ${newTasks.length} 个任务`);
+        } catch (err) {
+          alert('导入失败：文件格式不正确');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   const handleAddTask = (formData: {
     name: string; taskType: string; timeType: string;
     executeTime: string; path: string; note: string;
@@ -460,7 +519,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         todaySuccess={stats.todaySuccess}
         todayFailed={stats.todayFailed}
         onAddTask={handleAddClick}
-        onImportTask={() => {}}
+        onImportTask={handleImportTask}
       />
       <TaskTable
         tasks={tasks}
@@ -476,7 +535,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         onDelete={handleDelete}
         onExport={handleExport}
         onBatchDelete={handleBatchDelete}
-        onBatchExport={() => {}}
+        onBatchExport={handleBatchExport}
         lang={lang}
       />
       <AddTaskModal

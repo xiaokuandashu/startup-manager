@@ -25,12 +25,18 @@ const getSystemTheme = (): 'light' | 'dark' => {
 };
 
 // 同步 Tauri 窗口标题栏主题
-const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark') => {
+const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark', isAuto: boolean = false) => {
   try {
     if ((window as any).__TAURI_INTERNALS__) {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const win = getCurrentWindow();
-      await win.setTheme(resolvedTheme === 'dark' ? 'dark' : 'light');
+      if (isAuto) {
+        // Follow system: pass null to let OS decide
+        await win.setTheme(null);
+      } else {
+        // Explicit light or dark
+        await win.setTheme(resolvedTheme as any);
+      }
     }
   } catch (e) {
     console.error('Set titlebar theme failed:', e);
@@ -72,7 +78,7 @@ const App: React.FC = () => {
     setResolvedTheme(actual);
     document.documentElement.setAttribute('data-theme', actual);
     localStorage.setItem('themeMode', themeMode);
-    syncTitleBarTheme(actual);
+    syncTitleBarTheme(actual, themeMode === 'auto');
 
     // 监听系统主题变化
     if (themeMode === 'auto') {
@@ -81,7 +87,7 @@ const App: React.FC = () => {
         const t = e.matches ? 'dark' : 'light';
         setResolvedTheme(t);
         document.documentElement.setAttribute('data-theme', t);
-        syncTitleBarTheme(t);
+        syncTitleBarTheme(t, true);
       };
       mq.addEventListener('change', handler);
       return () => mq.removeEventListener('change', handler);

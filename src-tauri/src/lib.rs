@@ -150,11 +150,15 @@ fn get_installed_apps() -> Vec<InstalledApp> {
                                         || name.starts_with("Uninstall");
 
                                     if !is_system {
-                                        apps.push(InstalledApp {
-                                            name,
-                                            path: sub_path.to_string_lossy().to_string(),
-                                            icon: String::new(),
-                                        });
+                                        // Filter garbled names
+                                        let has_garbled = name.contains('\u{FFFD}') || name.len() < 2;
+                                        if !has_garbled {
+                                            apps.push(InstalledApp {
+                                                name,
+                                                path: sub_path.to_string_lossy().to_string(),
+                                                icon: String::new(),
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -573,11 +577,15 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
                     || name_lower.contains("remove")
                     || name_lower.contains("repair");
                 if !is_uninstall {
-                    apps.push(InstalledApp {
-                        name,
-                        path: path.to_string_lossy().to_string(),
-                        icon: String::new(),
-                    });
+                    // Filter out garbled/unreadable names
+                    let has_garbled = name.contains('\u{FFFD}') || name.len() < 2;
+                    if !has_garbled {
+                        apps.push(InstalledApp {
+                            name,
+                            path: path.to_string_lossy().to_string(),
+                            icon: String::new(),
+                        });
+                    }
                 }
             }
         }

@@ -18,7 +18,8 @@
         "minWidth": 1000,
         "minHeight": 600,
         "decorations": true,
-        "center": true
+        "center": true,
+        "theme": "Light"
       }
     ],
     "security": {

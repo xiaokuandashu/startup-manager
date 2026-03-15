@@ -53,12 +53,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         try {
           const { isEnabled } = await import('@tauri-apps/plugin-autostart');
           const enabled = await isEnabled();
-          setAutoStart(enabled);
+          if (!enabled) {
+            // First launch: enable autostart by default
+            const { enable } = await import('@tauri-apps/plugin-autostart');
+            await enable();
+            setAutoStart(true);
+          } else {
+            setAutoStart(enabled);
+          }
         } catch (e) {
           console.error('Autostart check failed:', e);
         }
       }
-
       // 加载关闭行为
       const saved = localStorage.getItem('closeBehavior');
       if (saved === 'exit') {

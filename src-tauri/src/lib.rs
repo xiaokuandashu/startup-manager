@@ -564,11 +564,21 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
-                apps.push(InstalledApp {
-                    name,
-                    path: path.to_string_lossy().to_string(),
-                    icon: String::new(),
-                });
+                // Filter out uninstall shortcuts
+                let name_lower = name.to_lowercase();
+                let is_uninstall = name_lower.starts_with("uninstall")
+                    || name_lower.starts_with("uninst")
+                    || name.starts_with("卸载")
+                    || name_lower.contains("uninstall")
+                    || name_lower.contains("remove")
+                    || name_lower.contains("repair");
+                if !is_uninstall {
+                    apps.push(InstalledApp {
+                        name,
+                        path: path.to_string_lossy().to_string(),
+                        icon: String::new(),
+                    });
+                }
             }
         }
     }
@@ -579,6 +589,14 @@ pub fn run() {
     use tauri_plugin_autostart::MacosLauncher;
 
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When a second instance is launched, focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())

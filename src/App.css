@@ -351,11 +351,12 @@ body {
   padding: 14px 16px;
   border-bottom: 1px solid #f5f5f5;
   transition: background 0.15s;
+  min-height: 56px;
 }
 .task-row:hover { background: #fafafa; }
 .task-row.selected { background: #EBF5FF; }
 
-.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-all; line-height: 1.5; padding: 6px 4px; }
+.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-all; line-height: 1.5; padding: 6px 4px; display: flex; align-items: center; }
 .task-icon-cell { display: flex; align-items: center; justify-content: center; }
 .task-name-cell { display: flex; align-items: center; }
 .task-path-cell { max-width: 120px; }

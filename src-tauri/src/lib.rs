@@ -151,9 +151,12 @@ fn get_installed_apps() -> Vec<InstalledApp> {
 
                                     if !is_system {
                                         // Filter garbled names
-                                        let has_garbled = name.contains('\u{FFFD}') || name.len() < 2
-                                            || name.chars().any(|c| c.is_control());
-                                        if !has_garbled {
+                                        let is_garbled = name.contains('\u{FFFD}') || name.len() < 2
+                                            || name.chars().any(|c| c.is_control()
+                                                || ('\u{E000}'..='\u{F8FF}').contains(&c)
+                                                || ('\u{FE00}'..='\u{FE0F}').contains(&c)
+                                            );
+                                        if !is_garbled {
                                             apps.push(InstalledApp {
                                                 name,
                                                 path: sub_path.to_string_lossy().to_string(),
@@ -593,9 +596,12 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
                     || name_lower.contains("repair");
                 if !is_uninstall {
                     // Filter out garbled/unreadable names
-                    let has_garbled = name.contains('\u{FFFD}') || name.len() < 2
-                        || name.chars().any(|c| c.is_control());
-                    if !has_garbled {
+                    let is_garbled = name.contains('\u{FFFD}') || name.len() < 2
+                        || name.chars().any(|c| c.is_control()
+                            || ('\u{E000}'..='\u{F8FF}').contains(&c)
+                            || ('\u{FE00}'..='\u{FE0F}').contains(&c)
+                        );
+                    if !is_garbled {
                         apps.push(InstalledApp {
                             name,
                             path: path.to_string_lossy().to_string(),

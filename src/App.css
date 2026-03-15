@@ -355,7 +355,7 @@ body {
 .task-row:hover { background: #fafafa; }
 .task-row.selected { background: #EBF5FF; }
 
-.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-cell { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-all; line-height: 1.5; padding: 6px 4px; }
 .task-icon-cell { display: flex; align-items: center; justify-content: center; }
 .task-name-cell { display: flex; align-items: center; }
 .task-path-cell { max-width: 120px; }

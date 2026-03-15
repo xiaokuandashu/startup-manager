@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PageType } from '../types';
 import UserDropdown from './UserDropdown';
 import AvatarCropper from './AvatarCropper';
+import { t, Language } from '../i18n';
 
 interface UserInfo {
   id: string;
@@ -21,13 +22,14 @@ interface HeaderProps {
   onToggleTheme: () => void;
   user: UserInfo | null;
   onLogout: () => void;
+  lang: Language;
 }
 
 const AVATAR_KEY = 'user_avatar';
 
 const Header: React.FC<HeaderProps> = ({
   currentPage, onPageChange, searchQuery, onSearchChange,
-  onLogin, onVip, theme, onToggleTheme, user, onLogout,
+  onLogin, onVip, theme, onToggleTheme, user, onLogout, lang,
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAvatarCropper, setShowAvatarCropper] = useState(false);
@@ -58,8 +60,8 @@ const Header: React.FC<HeaderProps> = ({
   const avatarSrc = customAvatar || '/icon/icon_touxiangmoren.svg';
 
   const pages: { key: PageType; label: string }[] = [
-    { key: 'home', label: '主页' },
-    { key: 'log', label: '日志' },
+    { key: 'home', label: t('home', lang) },
+    { key: 'log', label: t('logs', lang) },
   ];
 
   return (
@@ -80,7 +82,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="header-center">
           <div className="search-bar">
             <input
-              placeholder="搜索任务名称"
+              placeholder={t('search', lang)}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
             />
@@ -97,10 +99,10 @@ const Header: React.FC<HeaderProps> = ({
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
             </svg>
-            {user?.vipStatus === 'active' ? '会员用户' : '成为会员，激活全部权益'}
+            {user?.vipStatus === 'active' ? t('vip', lang) : t('purchaseVip', lang)}
           </button>
 
-          <button className="theme-toggle-btn" onClick={onToggleTheme} title={theme === 'light' ? '切换到暗夜模式' : '切换到亮色模式'}>
+          <button className="theme-toggle-btn" onClick={onToggleTheme} title={theme === 'light' ? t('darkMode', lang) : t('lightMode', lang)}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 

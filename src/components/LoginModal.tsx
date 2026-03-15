@@ -4,6 +4,7 @@ interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: (user: { id: string; phone: string; vipStatus: string; vipExpireDate?: string }, token: string) => void;
+  lang?: string;
 }
 
 const API_BASE = 'http://aacc.fun:3001/api';

@@ -27,13 +27,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [isMac, setIsMac] = useState(false);
   const [autoStart, setAutoStart] = useState(true);
   const [closeBehavior, setCloseBehavior] = useState<'tray' | 'exit'>('tray');
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
   const [appVersion, setAppVersion] = useState('0.2.7');
   const [updateStatus, setUpdateStatus] = useState<'idle'|'checking'|'downloading'|'installing'|'up-to-date'|'error'>('idle');
   const [updateMsg, setUpdateMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [lang, setLang] = useState<Language>(getCurrentLanguage());
+  const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -49,6 +48,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         setIsMac(navigator.platform.toLowerCase().includes('mac'));
       }
 
+      // 加载自启动状态
       if (isTauriEnv()) {
         try {
           const { isEnabled } = await import('@tauri-apps/plugin-autostart');
@@ -59,6 +59,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         }
       }
 
+      // 加载关闭行为
       const saved = localStorage.getItem('closeBehavior');
       if (saved === 'exit') {
         setCloseBehavior('exit');
@@ -66,6 +67,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         setCloseBehavior('tray');
       }
 
+      // 初始化关闭行为到 Rust
       if (isTauriEnv()) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -79,28 +81,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     init();
   }, []);
 
-  const handleAutoStartToggle = (checked: boolean) => {
+  // 自启动切换 — 立即生效
+  const handleAutoStartToggle = async (checked: boolean) => {
     setAutoStart(checked);
-    setHasChanges(true);
-  };
-
-  const handleCloseBehaviorChange = (behavior: 'tray' | 'exit') => {
-    setCloseBehavior(behavior);
-    setHasChanges(true);
-  };
-
-  const handleLanguageChange = (newLang: Language) => {
-    setLang(newLang);
-    setCurrentLanguage(newLang);
-    onLanguageChange?.(newLang);
-    setHasChanges(true);
-  };
-
-  const handleSave = async () => {
     if (isTauriEnv()) {
       try {
         const { enable, disable } = await import('@tauri-apps/plugin-autostart');
-        if (autoStart) {
+        if (checked) {
           await enable();
         } else {
           await disable();
@@ -108,19 +95,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       } catch (e) {
         console.error('Autostart toggle failed:', e);
       }
+    }
+    showStatus(t('settingsSaved', lang));
+  };
 
+  // 关闭行为切换 — 立即生效
+  const handleCloseBehaviorChange = async (behavior: 'tray' | 'exit') => {
+    setCloseBehavior(behavior);
+    localStorage.setItem('closeBehavior', behavior);
+    if (isTauriEnv()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('set_close_behavior', { minimizeToTray: closeBehavior === 'tray' });
+        await invoke('set_close_behavior', { minimizeToTray: behavior === 'tray' });
       } catch (e) {
         console.error('Set close behavior failed:', e);
       }
     }
+    showStatus(t('settingsSaved', lang));
+  };
 
-    localStorage.setItem('closeBehavior', closeBehavior);
-    setHasChanges(false);
-    setSaveMsg(t('settingsSaved', lang));
-    setTimeout(() => setSaveMsg(''), 2000);
+  // 语言切换 — 立即生效
+  const handleLanguageChange = (newLang: Language) => {
+    setLang(newLang);
+    setCurrentLanguage(newLang);
+    onLanguageChange?.(newLang);
+    showStatus(t('settingsSaved', newLang));
+  };
+
+  // 显示临时提示
+  const showStatus = (msg: string) => {
+    setStatusMsg(msg);
+    setTimeout(() => setStatusMsg(''), 2000);
   };
 
   useEffect(() => {
@@ -217,14 +222,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           {t('settings', lang)}
         </button>
         <div className="settings-header-right">
-          {saveMsg && <span className="save-msg">{saveMsg}</span>}
-          <button
-            className={`btn-save ${hasChanges ? 'active' : ''}`}
-            onClick={handleSave}
-            disabled={!hasChanges}
-          >
-            {t('saveSettings', lang)}
-          </button>
+          {statusMsg && <span className="save-msg">{statusMsg}</span>}
         </div>
       </div>
 

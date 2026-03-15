@@ -8,6 +8,7 @@ import SettingsPage from './pages/SettingsPage';
 import LoginModal from './components/LoginModal';
 import VipModal from './components/VipModal';
 import UpdateChecker from './components/UpdateChecker';
+import { Language, getCurrentLanguage } from './i18n';
 
 interface UserInfo {
   id: string;
@@ -41,6 +42,9 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
+
+  // 全局语言状态
+  const [lang, setLang] = useState<Language>(getCurrentLanguage());
 
   // 主题管理: light / dark / auto
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -136,6 +140,7 @@ const App: React.FC = () => {
           onToggleTheme={toggleTheme}
           user={user}
           onLogout={handleLogout}
+          lang={lang}
         />
       )}
 
@@ -144,6 +149,7 @@ const App: React.FC = () => {
           <HomePage
             searchQuery={searchQuery}
             checkVipBeforeAdd={checkVipBeforeAdd}
+            lang={lang}
           />
         )}
         {currentPage === 'log' && <LogPage searchQuery={searchQuery} />}
@@ -153,6 +159,7 @@ const App: React.FC = () => {
             themeMode={themeMode}
             onThemeModeChange={handleThemeModeChange}
             user={user}
+            onLanguageChange={setLang}
           />
         )}
       </main>
@@ -161,6 +168,7 @@ const App: React.FC = () => {
         isOpen={showLogin}
         onClose={() => setShowLogin(false)}
         onLoginSuccess={handleLoginSuccess}
+        lang={lang}
       />
       <VipModal
         isOpen={showVip}
@@ -173,6 +181,7 @@ const App: React.FC = () => {
             localStorage.setItem('user', JSON.stringify(updated));
           }
         }}
+        lang={lang}
       />
       <UpdateChecker />
     </div>

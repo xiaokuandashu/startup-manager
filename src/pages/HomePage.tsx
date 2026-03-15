@@ -3,10 +3,12 @@ import { StartupTask, LogEntry } from '../types';
 import StatsBar from '../components/StatsBar';
 import TaskTable from '../components/TaskTable';
 import AddTaskModal from '../components/AddTaskModal';
+import { Language } from '../i18n';
 
 interface HomePageProps {
   searchQuery: string;
   checkVipBeforeAdd: () => boolean;
+  lang?: Language;
 }
 
 const TASKS_STORAGE_KEY = 'startup_tasks';
@@ -205,7 +207,7 @@ const exportTaskConfig = (task: StartupTask) => {
   });
 };
 
-const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) => {
+const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lang = 'zh' }) => {
   const [tasks, setTasks] = useState<StartupTask[]>(loadTasks);
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -469,6 +471,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd }) =
         onExport={handleExport}
         onBatchDelete={handleBatchDelete}
         onBatchExport={() => {}}
+        lang={lang}
       />
       <AddTaskModal
         isOpen={showAddModal}

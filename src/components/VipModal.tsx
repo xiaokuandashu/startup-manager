@@ -5,6 +5,7 @@ interface VipModalProps {
   onClose: () => void;
   token: string | null;
   onActivated: (expireDate: string) => void;
+  lang?: string;
 }
 
 interface Plan {

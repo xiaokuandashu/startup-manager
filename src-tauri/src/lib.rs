@@ -596,17 +596,8 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
             
-            let icon_path = app.path().resource_dir().unwrap().join("icons/tray-icon.png");
-            let tray_icon = tauri::image::Image::from_path(&icon_path)
-                .unwrap_or_else(|_| {
-                    // fallback to app icon
-                    tauri::image::Image::from_path(
-                        &app.path().resource_dir().unwrap().join("icons/icon.png")
-                    ).expect("failed to load any icon")
-                });
-            
             let _tray = TrayIconBuilder::new()
-                .icon(tray_icon)
+                .icon(tauri::include_image!("icons/tray-icon.png"))
                 .menu(&menu)
                 .tooltip("自启精灵")
                 .on_menu_event(|app, event| {

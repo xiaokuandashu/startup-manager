@@ -67,10 +67,10 @@ const TaskTable: React.FC<TaskTableProps> = ({
         <div className="task-table-body">
           {filteredTasks.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-illustration">
-                <img src="/icon/icon_line_smile.svg" alt="empty" width="120" height="120" style={{ opacity: 0.6 }} />
+              <div className="empty-illustration" style={{ position: 'relative', display: 'inline-block' }}>
+                <img src="/icon/picture_nonoe.svg" alt="empty" width="200" height="200" style={{ opacity: 0.8 }} />
+                <p className="empty-text" style={{ position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>{t('noTasks', lang)}，{t('noTasksHint', lang)}</p>
               </div>
-              <p className="empty-text">{t('noTasks', lang)}，{t('noTasksHint', lang)}</p>
             </div>
           ) : (
             filteredTasks.map(task => (

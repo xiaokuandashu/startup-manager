@@ -34,7 +34,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Layout username={username} onLogout={handleLogout}>
+      <Layout username={username} onLogout={handleLogout} token={token} onUsernameChange={(u: string) => { setUsername(u); localStorage.setItem('admin_user', u); }}>
         <Routes>
           <Route path="/" element={<DashboardPage token={token} />} />
           <Route path="/plans" element={<PlansPage token={token} />} />

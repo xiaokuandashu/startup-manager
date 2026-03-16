@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { getDB, generateActivationCode } from '../db';
 
 const router = Router();
@@ -230,6 +231,84 @@ router.put('/agreements/:type', (req, res) => {
     .run(title_zh, title_en, content_zh, content_en, req.params.type);
   console.log(`[协议] 更新协议: ${req.params.type}`);
   res.json({ message: '更新成功' });
+});
+
+// ========== 管理员账户设置 ==========
+router.put('/profile', (req, res) => {
+  const { oldPassword, newUsername, newPassword } = req.body;
+  if (!oldPassword) {
+    return res.status(400).json({ error: '请输入当前密码验证身份' });
+  }
+
+  const db = getDB();
+  // 获取当前管理员（取第一个）
+  const admin = db.prepare('SELECT * FROM admin LIMIT 1').get() as any;
+  if (!admin) {
+    return res.status(404).json({ error: '管理员不存在' });
+  }
+  if (!bcrypt.compareSync(oldPassword, admin.password)) {
+    return res.status(401).json({ error: '当前密码错误' });
+  }
+
+  if (newUsername && newUsername.trim()) {
+    db.prepare('UPDATE admin SET username = ? WHERE id = ?').run(newUsername.trim(), admin.id);
+    console.log(`[管理员] 修改用户名: ${admin.username} -> ${newUsername.trim()}`);
+  }
+  if (newPassword && newPassword.length >= 6) {
+    const hashedPwd = bcrypt.hashSync(newPassword, 10);
+    db.prepare('UPDATE admin SET password = ? WHERE id = ?').run(hashedPwd, admin.id);
+    console.log(`[管理员] 修改密码`);
+  }
+
+  const updated = db.prepare('SELECT username FROM admin WHERE id = ?').get(admin.id) as any;
+  res.json({ message: '修改成功', username: updated.username });
+});
+
+// ========== 数据看板详情 ==========
+router.get('/dashboard/detail/:metric', (req, res) => {
+  const db = getDB();
+  const metric = req.params.metric;
+  let data: any[] = [];
+  let title = '';
+
+  switch (metric) {
+    case 'totalUsers':
+      title = '全部用户';
+      data = db.prepare('SELECT id, email, vip_status, created_at, last_login FROM users ORDER BY created_at DESC LIMIT 200').all();
+      break;
+    case 'vipUsers':
+      title = 'VIP用户';
+      data = db.prepare("SELECT id, email, vip_status, vip_expire_date, created_at, last_login FROM users WHERE vip_status = 'active' ORDER BY created_at DESC LIMIT 200").all();
+      break;
+    case 'todayActive':
+      title = '今日活跃用户';
+      data = db.prepare("SELECT id, email, vip_status, last_login FROM users WHERE date(last_login) = date('now') ORDER BY last_login DESC LIMIT 200").all();
+      break;
+    case 'totalRevenue':
+      title = '收入明细';
+      data = db.prepare("SELECT o.id, o.plan_name, o.amount, o.status, o.pay_type, o.created_at, u.email as user_email FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.status = 'paid' ORDER BY o.created_at DESC LIMIT 200").all();
+      break;
+    case 'totalCodes':
+      title = '全部激活码';
+      data = db.prepare('SELECT c.id, c.code, c.plan_duration, c.status, c.created_at, u.email as user_email FROM activation_codes c LEFT JOIN users u ON c.user_id = u.id ORDER BY c.created_at DESC LIMIT 200').all();
+      break;
+    case 'activatedCodes':
+      title = '已激活码';
+      data = db.prepare("SELECT c.id, c.code, c.plan_duration, c.status, c.activated_at, u.email as user_email FROM activation_codes c LEFT JOIN users u ON c.user_id = u.id WHERE c.status = 'activated' ORDER BY c.activated_at DESC LIMIT 200").all();
+      break;
+    case 'pendingCodes':
+      title = '待使用激活码';
+      data = db.prepare("SELECT id, code, plan_duration, status, created_at FROM activation_codes WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200").all();
+      break;
+    case 'registeredNotPaid':
+      title = '注册未付费用户';
+      data = db.prepare("SELECT id, email, created_at, last_login FROM users WHERE vip_status = 'inactive' ORDER BY created_at DESC LIMIT 200").all();
+      break;
+    default:
+      return res.status(400).json({ error: '未知指标' });
+  }
+
+  res.json({ title, data, total: data.length });
 });
 
 export default router;

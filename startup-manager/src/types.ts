@@ -32,4 +32,4 @@ export interface LogEntry {
   icon?: string;
 }
 
-export type PageType = 'home' | 'log' | 'settings' | 'ai' | 'recording';
+export type PageType = 'home' | 'log' | 'settings' | 'ai' | 'recording' | 'marketplace';

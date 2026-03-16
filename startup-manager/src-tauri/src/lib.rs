@@ -9,6 +9,7 @@ mod ai_engine;
 mod recorder;
 mod local_model;
 mod accessibility;
+mod marketplace;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
@@ -761,6 +762,43 @@ fn ax_get_window() -> Result<accessibility::WindowInfo, String> {
 fn ax_check_permission() -> bool {
     accessibility::check_accessibility_permission()
 }
+
+// ======== 任务市场 Tauri commands ========
+
+#[tauri::command]
+fn marketplace_browse(category: Option<String>, search: Option<String>) -> Result<Vec<marketplace::MarketplaceItem>, String> {
+    marketplace::browse_marketplace(category, search)
+}
+
+#[tauri::command]
+fn marketplace_publish(
+    recording_id: String,
+    description: String,
+    author: String,
+    category: String,
+    tags: Vec<String>,
+) -> Result<String, String> {
+    // 先加载录制
+    let recordings = recorder::list_recordings()?;
+    let recording = recordings.into_iter().find(|r| r.id == recording_id)
+        .ok_or("录制不存在".to_string())?;
+    marketplace::publish_to_marketplace(recording, description, author, category, tags)
+}
+
+#[tauri::command]
+fn marketplace_download(item_id: String) -> Result<marketplace::MarketplaceItem, String> {
+    marketplace::download_from_marketplace(&item_id)
+}
+
+#[tauri::command]
+fn marketplace_categories() -> Vec<String> {
+    marketplace::get_categories()
+}
+
+#[tauri::command]
+fn marketplace_delete(item_id: String) -> Result<(), String> {
+    marketplace::remove_from_marketplace(&item_id)
+}
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -868,7 +906,12 @@ pub fn run() {
             local_model_infer,
             ollama_start,
             ax_get_window,
-            ax_check_permission
+            ax_check_permission,
+            marketplace_browse,
+            marketplace_publish,
+            marketplace_download,
+            marketplace_categories,
+            marketplace_delete
         ]);
 
     // Windows 系统托盘 + 窗口关闭拦截

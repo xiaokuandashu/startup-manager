@@ -63,6 +63,7 @@ const Header: React.FC<HeaderProps> = ({
     { key: 'home', label: t('home', lang) },
     { key: 'ai', label: '🤖 AI' },
     { key: 'recording', label: '🎬 录制' },
+    { key: 'marketplace', label: '🏪 市场' },
     { key: 'log', label: t('logs', lang) },
   ];
 

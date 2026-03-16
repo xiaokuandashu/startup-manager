@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { PageType } from './types';
+import { PageType, ToolType, ToolTab } from './types';
 import Header from './components/Header';
 import HomePage from './pages/HomePage';
 import LogPage from './pages/LogPage';
@@ -8,6 +8,7 @@ import SettingsPage from './pages/SettingsPage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import RecordingPage from './pages/RecordingPage';
 import MarketplacePage from './pages/MarketplacePage';
+import ToolsPage from './pages/ToolsPage';
 import LoginModal from './components/LoginModal';
 import VipModal from './components/VipModal';
 import UpdateChecker from './components/UpdateChecker';
@@ -40,9 +41,20 @@ const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark', isAuto: boolea
   }
 };
 
+const TOOL_META: Record<ToolType, { title: string; icon: string }> = {
+  ai: { title: 'AI 助手', icon: '🤖' },
+  recording: { title: '操作录制', icon: '🎬' },
+  marketplace: { title: '任务市场', icon: '🏪' },
+  log: { title: '运行日志', icon: '📋' },
+};
+
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [searchQuery, setSearchQuery] = useState('');
+  // 工具标签页状态
+  const [toolTabs, setToolTabs] = useState<ToolTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [dragTabId, setDragTabId] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
 
@@ -147,6 +159,67 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* 工具标签栏 */}
+      {toolTabs.length > 0 && (
+        <div className="tool-tab-bar">
+          {toolTabs.map(tab => (
+            <div
+              key={tab.id}
+              className={`tool-tab ${activeTabId === tab.id ? 'active' : ''} ${dragTabId === tab.id ? 'dragging' : ''}`}
+              draggable
+              onClick={() => { setActiveTabId(tab.id); setCurrentPage('tools'); }}
+              onDragStart={() => setDragTabId(tab.id)}
+              onDragOver={e => { e.preventDefault(); }}
+              onDrop={() => {
+                if (dragTabId && dragTabId !== tab.id) {
+                  setToolTabs(prev => {
+                    const arr = [...prev];
+                    const fromIdx = arr.findIndex(t => t.id === dragTabId);
+                    const toIdx = arr.findIndex(t => t.id === tab.id);
+                    if (fromIdx >= 0 && toIdx >= 0) {
+                      const [moved] = arr.splice(fromIdx, 1);
+                      arr.splice(toIdx, 0, moved);
+                    }
+                    return arr;
+                  });
+                }
+                setDragTabId(null);
+              }}
+              onDragEnd={() => setDragTabId(null)}
+            >
+              <span className="tool-tab-icon">{tab.icon}</span>
+              <span className="tool-tab-title">{tab.title}</span>
+              <button
+                className={`tool-tab-lock ${tab.locked ? 'locked' : ''}`}
+                onClick={e => {
+                  e.stopPropagation();
+                  setToolTabs(prev => prev.map(t => t.id === tab.id ? { ...t, locked: !t.locked } : t));
+                }}
+                title={tab.locked ? '取消锁定' : '锁定标签'}
+              >
+                {tab.locked ? '📌' : '📍'}
+              </button>
+              {!tab.locked && (
+                <button
+                  className="tool-tab-close"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setToolTabs(prev => prev.filter(t => t.id !== tab.id));
+                    if (activeTabId === tab.id) {
+                      const remaining = toolTabs.filter(t => t.id !== tab.id);
+                      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+                      if (remaining.length === 0) setCurrentPage('tools');
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <main className="app-main">
         {currentPage === 'home' && (
           <HomePage
@@ -155,10 +228,36 @@ const App: React.FC = () => {
             lang={lang}
           />
         )}
-        {currentPage === 'log' && <LogPage searchQuery={searchQuery} lang={lang} />}
-        {currentPage === 'ai' && <AiAssistantPage lang={lang} />}
-        {currentPage === 'recording' && <RecordingPage lang={lang} />}
-        {currentPage === 'marketplace' && <MarketplacePage lang={lang} />}
+        {currentPage === 'tools' && !activeTabId && (
+          <ToolsPage onOpenTool={(type: ToolType) => {
+            const existing = toolTabs.find(t => t.type === type);
+            if (existing) {
+              setActiveTabId(existing.id);
+            } else {
+              const meta = TOOL_META[type];
+              const newTab: ToolTab = {
+                id: `${type}_${Date.now()}`,
+                type,
+                title: meta.title,
+                icon: meta.icon,
+                locked: false,
+              };
+              setToolTabs(prev => [...prev, newTab]);
+              setActiveTabId(newTab.id);
+            }
+          }} />
+        )}
+        {currentPage === 'tools' && activeTabId && (() => {
+          const tab = toolTabs.find(t => t.id === activeTabId);
+          if (!tab) return null;
+          switch (tab.type) {
+            case 'ai': return <AiAssistantPage lang={lang} />;
+            case 'recording': return <RecordingPage lang={lang} />;
+            case 'marketplace': return <MarketplacePage lang={lang} />;
+            case 'log': return <LogPage searchQuery={searchQuery} lang={lang} />;
+            default: return null;
+          }
+        })()}
         {currentPage === 'settings' && (
           <SettingsPage
             onBack={() => setCurrentPage('home')}

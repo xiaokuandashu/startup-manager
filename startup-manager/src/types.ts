@@ -32,4 +32,15 @@ export interface LogEntry {
   icon?: string;
 }
 
-export type PageType = 'home' | 'log' | 'settings' | 'ai' | 'recording' | 'marketplace';
+export type PageType = 'home' | 'tools' | 'settings';
+
+// 工具标签页（浏览器风格）
+export type ToolType = 'ai' | 'recording' | 'marketplace' | 'log';
+
+export interface ToolTab {
+  id: string;
+  type: ToolType;
+  title: string;
+  icon: string;
+  locked: boolean;
+}

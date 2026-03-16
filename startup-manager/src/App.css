@@ -2814,6 +2814,31 @@ body {
   transform: translateX(4px);
 }
 
+.tool-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.96);
+}
+
+.tool-card.drag-over {
+  border-color: var(--tool-color, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tool-color, #3b82f6) 30%, transparent);
+  transform: translateY(-2px);
+}
+
+.tool-card-drag {
+  font-size: 16px;
+  color: var(--text-secondary, #d1d5db);
+  cursor: grab;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  user-select: none;
+  letter-spacing: -2px;
+}
+
+.tool-card:hover .tool-card-drag { opacity: 1; }
+.tool-card-drag:active { cursor: grabbing; }
+
 .tool-card-icon {
   font-size: 32px;
   width: 56px;

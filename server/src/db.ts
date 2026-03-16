@@ -115,6 +115,87 @@ export function initDB() {
     )
   `);
 
+  // ======== Phase D: 市场任务表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS marketplace_tasks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      category TEXT DEFAULT '通用',
+      tags TEXT DEFAULT '[]',
+      recording_data TEXT,
+      task_config TEXT,
+      cost_credits INTEGER DEFAULT 1,
+      safety_level TEXT DEFAULT 'safe',
+      rating REAL DEFAULT 0,
+      rating_count INTEGER DEFAULT 0,
+      download_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      reject_reason TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // ======== Phase E: 积分表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS credits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT UNIQUE NOT NULL,
+      balance INTEGER DEFAULT 0,
+      total_earned INTEGER DEFAULT 0,
+      total_spent INTEGER DEFAULT 0,
+      expire_date TEXT,
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS credit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      related_task_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // 评论表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      rating INTEGER DEFAULT 5,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES marketplace_tasks(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // ======== Phase F: 安全审核表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS safety_audits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      auto_result TEXT DEFAULT 'pending',
+      auto_risks TEXT DEFAULT '[]',
+      manual_result TEXT,
+      manual_reviewer TEXT,
+      manual_note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES marketplace_tasks(id)
+    )
+  `);
+
   // 初始化默认管理员
   const adminExists = db.prepare('SELECT id FROM admin WHERE username = ?').get('admin');
   if (!adminExists) {

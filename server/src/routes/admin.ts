@@ -311,4 +311,67 @@ router.get('/dashboard/detail/:metric', (req, res) => {
   res.json({ title, data, total: data.length });
 });
 
+// ======== 市场审核管理 ========
+
+// 待审核列表
+router.get('/audit/pending', (_req, res) => {
+  const db = getDB();
+  const tasks = db.prepare(`
+    SELECT mt.*, u.email as publisher_email, sa.auto_result, sa.auto_risks
+    FROM marketplace_tasks mt
+    LEFT JOIN users u ON mt.user_id = u.id
+    LEFT JOIN safety_audits sa ON mt.id = sa.task_id
+    WHERE mt.status = 'pending'
+    ORDER BY mt.created_at ASC
+  `).all();
+  res.json(tasks);
+});
+
+// 审核通过
+router.post('/audit/approve', (req, res) => {
+  const { taskId } = req.body;
+  const db = getDB();
+  const task = db.prepare('SELECT * FROM marketplace_tasks WHERE id = ?').get(taskId) as any;
+  if (!task) return res.status(404).json({ error: '任务不存在' });
+
+  db.prepare("UPDATE marketplace_tasks SET status = 'approved', safety_level = 'safe', updated_at = datetime('now') WHERE id = ?").run(taskId);
+  db.prepare("UPDATE safety_audits SET manual_result = 'approved', manual_reviewer = 'admin', updated_at = datetime('now') WHERE task_id = ?").run(taskId);
+
+  // 发放积分
+  const { addCredits } = require('./marketplace');
+  addCredits(db, task.user_id, 1, 'publish', `发布任务通过审核: ${task.name}`, taskId);
+
+  res.json({ success: true });
+});
+
+// 审核拒绝
+router.post('/audit/reject', (req, res) => {
+  const { taskId, reason } = req.body;
+  const db = getDB();
+  db.prepare("UPDATE marketplace_tasks SET status = 'rejected', reject_reason = ?, updated_at = datetime('now') WHERE id = ?").run(reason || '不符合标准', taskId);
+  db.prepare("UPDATE safety_audits SET manual_result = 'rejected', manual_reviewer = 'admin', manual_note = ?, updated_at = datetime('now') WHERE task_id = ?").run(reason || '', taskId);
+  res.json({ success: true });
+});
+
+// 删除任务（管理员强制）
+router.delete('/audit/task/:id', (req, res) => {
+  const db = getDB();
+  db.prepare('DELETE FROM comments WHERE task_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM safety_audits WHERE task_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM marketplace_tasks WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// 市场统计
+router.get('/market-stats', (_req, res) => {
+  const db = getDB();
+  const total = (db.prepare('SELECT COUNT(*) as c FROM marketplace_tasks').get() as any).c;
+  const approved = (db.prepare("SELECT COUNT(*) as c FROM marketplace_tasks WHERE status = 'approved'").get() as any).c;
+  const pending = (db.prepare("SELECT COUNT(*) as c FROM marketplace_tasks WHERE status = 'pending'").get() as any).c;
+  const rejected = (db.prepare("SELECT COUNT(*) as c FROM marketplace_tasks WHERE status = 'rejected'").get() as any).c;
+  const totalDownloads = (db.prepare('SELECT SUM(download_count) as s FROM marketplace_tasks').get() as any).s || 0;
+  const totalCredits = (db.prepare('SELECT SUM(balance) as s FROM credits').get() as any).s || 0;
+  res.json({ total, approved, pending, rejected, totalDownloads, totalCredits });
+});
+
 export default router;

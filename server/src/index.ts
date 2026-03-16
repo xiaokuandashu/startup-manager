@@ -8,6 +8,8 @@ import { authMiddleware, adminMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import activationRoutes from './routes/activation';
 import adminRoutes from './routes/admin';
+import marketplaceRoutes from './routes/marketplace';
+import creditsRoutes from './routes/credits';
 
 const app = express();
 const PORT = 3001;
@@ -49,6 +51,9 @@ app.get('/admin/*', (_req, res) => {
 
 // 公开路由
 app.use('/api/auth', authRoutes);
+
+// 市场公开路由（浏览不需要鉴权）
+app.use('/api/marketplace', marketplaceRoutes);
 
 // 公开套餐查询（客户端价格同步）
 app.get('/api/plans', (_req, res) => {
@@ -104,6 +109,7 @@ app.post('/api/admin/upload', upload.single('file'), (req: any, res) => {
 
 // 需要用户认证的路由
 app.use('/api/activation', authMiddleware, activationRoutes);
+app.use('/api/credits', authMiddleware, creditsRoutes);
 
 // 需要管理员认证的路由
 app.use('/api/admin', authMiddleware, adminMiddleware, adminRoutes);

@@ -24,7 +24,7 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onSettings, onLogin, user, 
           <img src={avatarSrc || '/icon/icon_touxiangmoren.svg'} alt="avatar" width="50" height="50" style={{ borderRadius: '50%', objectFit: 'cover' }} />
           <div className="avatar-change-hint">更换</div>
         </div>
-        <span className="user-dropdown-name">{user ? user.email.replace(/^(.{3}).*(@.*)$/, '$1****$2') : '请登陆'}</span>
+        <span className="user-dropdown-name">{user ? user.email.replace(/^(.{3}).*(@.*)$/, '$1****$2') : '请登录'}</span>
       </div>
       <div className="user-dropdown-body">
         {user ? (
@@ -37,14 +37,14 @@ const UserDropdown: React.FC<UserDropdownProps> = ({ onSettings, onLogin, user, 
           </>
         ) : (
           <>
-            <span className="user-status-tag">未登陆</span>
+            <span className="user-status-tag">未登录</span>
             <button className="user-dropdown-link" onClick={onSettings}>设置</button>
           </>
         )}
       </div>
       {!user && (
         <div className="user-dropdown-footer">
-          <button className="btn-login-orange" onClick={onLogin}>登陆</button>
+          <button className="btn-login-orange" onClick={onLogin}>登录</button>
         </div>
       )}
     </div>

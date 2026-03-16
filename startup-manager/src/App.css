@@ -226,7 +226,7 @@ body {
 .user-dropdown-footer { padding-top: 8px; border-top: 1px solid var(--border-color); }
 .btn-login-orange {
   width: 100%; padding: 8px;
-  background: var(--accent-orange); color: white;
+  background: #0091FF; color: white;
   border: none; border-radius: var(--radius-sm);
   font-size: 14px; font-weight: 500; cursor: pointer;
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_bat</title>
+    <defs>
+        <path d="M0,0 L896,0 L896,900 L0,900 L0,0 Z" id="path-1"></path>
+        <path d="M0,0 L32,0 L32,32 L0,32 L0,0 Z" id="path-2"></path>
+        <radialGradient cx="100%" cy="-2.11588542%" fx="100%" fy="-2.11588542%" r="144.802116%" id="radialGradient-3">
+            <stop stop-color="#FFE59D" offset="0%"></stop>
+            <stop stop-color="#F7B500" offset="100%"></stop>
+        </radialGradient>
+    </defs>
+    <g id="页面-2" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图标" transform="translate(-480, -142)" xlink:href="#path-1">
+            <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+            <g id="icon_bat" transform="translate(480, 142)" xlink:href="#path-2">
+                <rect id="矩形" fill="url(#radialGradient-3)" fill-rule="evenodd" x="1" y="1" width="30" height="30" rx="4"></rect>
+                <text id=".bat" font-family="PingFangSC-Medium, PingFang SC" font-size="12" font-weight="400" fill="#000000">
+                    <tspan x="5" y="21">.bat</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

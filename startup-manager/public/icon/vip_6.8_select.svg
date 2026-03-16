@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="202px" height="122px" viewBox="0 0 202 122" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>vip_6.8_select</title>
+    <defs>
+        <path d="M0,0 L202,0 L202,122 L0,122 L0,0 Z" id="path-1"></path>
+    </defs>
+    <g id="vip_6.8_select" stroke="none" fill="none" xlink:href="#path-1">
+        <rect id="bg" stroke="#DCAC2E" stroke-width="2" fill="#FFFAED" fill-rule="evenodd" x="2" y="2" width="198" height="118" rx="8"></rect>
+        <text id="¥" font-family="PingFangSC-Regular, PingFang SC" font-size="14" font-weight="normal" letter-spacing="0.35" fill="#886B26">
+            <tspan x="53" y="82">¥</tspan>
+        </text>
+        <text id="一个月会员" font-family="PingFangSC-Semibold, PingFang SC" font-size="14" font-weight="500" letter-spacing="0.35" fill="#886B26">
+            <tspan x="60" y="42">一个月会员</tspan>
+        </text>
+        <text id="6.8" font-family="PingFangSC-Semibold, PingFang SC" font-size="36" font-weight="500" letter-spacing="0.9" fill="#886B26">
+            <tspan x="68" y="85">6.8</tspan>
+        </text>
+        <text id="¥9.9" font-family="PingFangSC-Semibold, PingFang SC" font-size="10" font-weight="500" letter-spacing="0.25" fill="#6E6E6E">
+            <tspan x="130" y="83">¥9.9</tspan>
+        </text>
+        <rect id="矩形-5" fill="#6E6E6E" fill-rule="evenodd" transform="translate(141, 79.5) rotate(-15) translate(-141, -79.5)" x="127" y="79" width="28" height="1" rx="0.5"></rect>
+        <path d="M9,1 L62,1 L62,1 L62,15 C62,19.418278 58.418278,23 54,23 L1,23 L1,23 L1,9 C1,4.581722 4.581722,1 9,1 Z" id="矩形-2" fill="#4C3623" fill-rule="evenodd"></path>
+        <text id="立减3.1" font-family="PingFangSC-Regular, PingFang SC" font-size="12" font-weight="normal" letter-spacing="0.3" fill="#D4AB4A">
+            <tspan x="11" y="16">立减3.1</tspan>
+        </text>
+    </g>
+</svg>

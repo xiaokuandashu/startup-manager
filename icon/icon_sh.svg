@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_sh</title>
+    <defs>
+        <path d="M0,0 L896,0 L896,900 L0,900 L0,0 Z" id="path-1"></path>
+        <path d="M0,0 L32,0 L32,32 L0,32 L0,0 Z" id="path-2"></path>
+        <radialGradient cx="102.412109%" cy="-2.74088542%" fx="102.412109%" fy="-2.74088542%" r="145.06526%" id="radialGradient-3">
+            <stop stop-color="#57F3D0" offset="0%"></stop>
+            <stop stop-color="#32BA9C" offset="100%"></stop>
+        </radialGradient>
+    </defs>
+    <g id="页面-2" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图标" transform="translate(-592, -142)" xlink:href="#path-1">
+            <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+            <g id="icon_sh" transform="translate(592, 142)" xlink:href="#path-2">
+                <rect id="矩形" fill="url(#radialGradient-3)" fill-rule="evenodd" x="1" y="1" width="30" height="30" rx="4"></rect>
+                <text id=".sh" font-family="PingFangSC-Medium, PingFang SC" font-size="12" font-weight="400" fill="#000000">
+                    <tspan x="8" y="21">.sh</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

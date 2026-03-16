@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="854px" height="122px" viewBox="0 0 854 122" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_jihuomajihuo</title>
+    <defs>
+        <path d="M0,0 L854,0 L854,122 L0,122 L0,0 Z" id="path-1"></path>
+    </defs>
+    <g id="icon_jihuomajihuo" stroke="none" fill="none" xlink:href="#path-1">
+        <rect id="矩形-30" stroke="#DCAC2E" stroke-width="2" fill="#FFFAED" fill-rule="evenodd" x="2" y="2" width="850" height="118" rx="8"></rect>
+        <path d="M9,1 L87,1 L87,1 L87,15 C87,19.418278 83.418278,23 79,23 L1,23 L1,23 L1,9 C1,4.581722 4.581722,1 9,1 Z" id="矩形-2" fill="#4C3623" fill-rule="evenodd"></path>
+        <text id="激活码激活" font-family="PingFangSC-Regular, PingFang SC" font-size="12" font-weight="normal" letter-spacing="0.3" fill="#D4AB4A">
+            <tspan x="13" y="16">激活码激活</tspan>
+        </text>
+    </g>
+</svg>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="28px" height="28px" viewBox="0 0 28 28" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_auto</title>
+    <defs>
+        <path d="M0,0 L896,0 L896,900 L0,900 L0,0 Z" id="path-1"></path>
+        <path d="M0,0 L28,0 L28,28 L0,28 L0,0 Z" id="path-2"></path>
+    </defs>
+    <g id="页面-2" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图标" transform="translate(-24, -214)" xlink:href="#path-1">
+            <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+            <g id="icon_auto" transform="translate(24, 214)" xlink:href="#path-2">
+                <path d="M2,14 C2,20.627417 7.372583,26 14,26 C20.627417,26 26,20.627417 26,14 C26,7.372583 20.627417,2 14,2 C7.372583,2 2,7.372583 2,14 Z" id="路径" fill-opacity="0.85" fill="#000000" fill-rule="nonzero"></path>
+                <path d="M14,6 C16.209139,6 18,7.790861 18,10 C18,12.209139 16.209139,14 14,14 L14,14 L14,14 L14,6 Z" id="矩形-5" fill="#FFFFFF" fill-rule="evenodd"></path>
+                <path d="M16,12 C18.209139,12 20,13.790861 20,16 C20,18.209139 18.209139,20 16,20 L16,20 L16,20 L16,12 Z" id="矩形-5备份-3" fill="#0091FF" fill-rule="evenodd" transform="translate(18, 16) scale(-1, 1) rotate(90) translate(-18, -16)"></path>
+                <path d="M8,8 C10.209139,8 12,9.790861 12,12 C12,14.209139 10.209139,16 8,16 L8,16 L8,16 L8,8 Z" id="矩形-5备份-2" fill="#0091FF" fill-rule="evenodd" transform="translate(10, 12) scale(1, -1) rotate(90) translate(-10, -12)"></path>
+                <path d="M10,14 C12.209139,14 14,15.790861 14,18 C14,20.209139 12.209139,22 10,22 L10,22 L10,22 L10,14 Z" id="矩形-5备份" fill="#FFFFFF" fill-rule="evenodd" transform="translate(12, 18) scale(-1, 1) translate(-12, -18)"></path>
+            </g>
+        </g>
+    </g>
+</svg>

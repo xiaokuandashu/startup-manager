@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="202px" height="122px" viewBox="0 0 202 122" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>vip_66.6_select</title>
+    <defs>
+        <path d="M0,0 L202,0 L202,122 L0,122 L0,0 Z" id="path-1"></path>
+    </defs>
+    <g id="vip_66.6_select" stroke="none" fill="none" xlink:href="#path-1">
+        <rect id="矩形备份-5" stroke="#DCAC2E" stroke-width="2" fill="#FFFAED" fill-rule="evenodd" x="2" y="2" width="198" height="118" rx="8"></rect>
+        <text id="永久会员" font-family="PingFangSC-Semibold, PingFang SC" font-size="14" font-weight="500" letter-spacing="0.35" fill="#886B26">
+            <tspan x="65" y="42">永久会员</tspan>
+        </text>
+        <text id="¥备份-2" font-family="PingFangSC-Regular, PingFang SC" font-size="14" font-weight="normal" letter-spacing="0.35" fill="#886B26">
+            <tspan x="40" y="82">¥</tspan>
+        </text>
+        <text id="66.6" font-family="PingFangSC-Semibold, PingFang SC" font-size="36" font-weight="500" letter-spacing="0.9" fill="#886B26">
+            <tspan x="55" y="85">66.6</tspan>
+        </text>
+        <text id="¥399.9" font-family="PingFangSC-Semibold, PingFang SC" font-size="10" font-weight="500" letter-spacing="0.25" fill="#6E6E6E">
+            <tspan x="140" y="83">¥399.9</tspan>
+        </text>
+        <rect id="矩形-5备份-2" fill="#6E6E6E" fill-rule="evenodd" transform="translate(157.5, 79.5) rotate(-15) translate(-157.5, -79.5)" x="137" y="79" width="41" height="1" rx="0.5"></rect>
+        <path d="M9,1 L65,1 L65,1 L65,15 C65,19.418278 61.418278,23 57,23 L1,23 L1,23 L1,9 C1,4.581722 4.581722,1 9,1 Z" id="矩形-2备份-2" fill="#4C3623" fill-rule="evenodd"></path>
+        <text id="限量发售" font-family="PingFangSC-Regular, PingFang SC" font-size="12" font-weight="normal" letter-spacing="0.3" fill="#D4AB4A">
+            <tspan x="9" y="16">限量发售</tspan>
+        </text>
+    </g>
+</svg>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_win</title>
+    <defs>
+        <path d="M0,0 L896,0 L896,900 L0,900 L0,0 Z" id="path-1"></path>
+        <path d="M0,0 L32,0 L32,32 L0,32 L0,0 Z" id="path-2"></path>
+        <radialGradient cx="102.141927%" cy="5.55111512e-15%" fx="102.141927%" fy="5.55111512e-15%" r="142.943951%" id="radialGradient-3">
+            <stop stop-color="#82C9FF" offset="0%"></stop>
+            <stop stop-color="#0091FF" offset="100%"></stop>
+        </radialGradient>
+    </defs>
+    <g id="页面-2" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图标" transform="translate(-423, -336)" xlink:href="#path-1">
+            <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+            <g id="icon_win" transform="translate(423, 336)" xlink:href="#path-2">
+                <rect id="矩形" fill="url(#radialGradient-3)" fill-rule="evenodd" x="1" y="1" width="30" height="30" rx="4"></rect>
+                <g id="win" transform="translate(11, 9.5)" fill="#000000" fill-rule="evenodd" stroke-width="1">
+                    <g id="编组">
+                        <polygon id="路径" fill-rule="nonzero" points="5.45558148 6.27589626 5.45558148 1.04060994 0 1.79310625 0 6.27589626"></polygon>
+                        <polygon id="路径" fill-rule="nonzero" points="5.91016107 6.27589626 13 6.27589626 13 0 5.91016107 0.978038743"></polygon>
+                        <polygon id="路径" fill-rule="nonzero" points="5.45558148 6.72411999 0 6.72411999 0 11.2069588 5.45558148 11.9594876"></polygon>
+                        <polygon id="路径" fill-rule="nonzero" points="5.91016107 6.72411999 5.91016107 12.0220588 13 13 13 6.72411999"></polygon>
+                    </g>
+                </g>
+                <text id="." font-family="PingFangSC-Medium, PingFang SC" font-size="12" font-weight="400" fill="#000000">
+                    <tspan x="7" y="21">.</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

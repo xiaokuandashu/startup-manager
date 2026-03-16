@@ -37,14 +37,14 @@ interface AiAssistantPageProps {
 const CHAT_STORAGE_KEY = 'ai_chat_history';
 const TASKS_STORAGE_KEY = 'startup_tasks';
 
-// 本地模型列表
-const LOCAL_MODELS = [
-  { id: 'rule_engine', name: '📐 本地规则引擎', size: '内置', desc: '关键词匹配，离线可用，速度最快', builtin: true },
-  { id: 'deepseek_cloud', name: '☁️ DeepSeek 云端', size: '在线', desc: '理解复杂指令，需要网络', builtin: true },
-  { id: 'qwen2_1.5b', name: '🧠 Qwen2.5-1.5B', size: '1.1GB', desc: '通义千问小模型，中文表现好', builtin: false },
-  { id: 'phi3_mini', name: '🧠 Phi-3 Mini', size: '2.2GB', desc: '微软小模型，推理能力强', builtin: false },
-  { id: 'gemma2_2b', name: '🧠 Gemma 2 2B', size: '1.6GB', desc: 'Google 轻量级模型', builtin: false },
-];
+interface ModelInfo {
+  id: string;
+  name: string;
+  size: string;
+  description: string;
+  installed: boolean;
+  downloading: boolean;
+}
 
 const QUICK_COMMANDS = [
   { label: '打开微信', icon: '💬' },
@@ -127,14 +127,66 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [isLoading, setIsLoading] = useState(false);
   const [showModelPanel, setShowModelPanel] = useState(false);
   const [activeModel, setActiveModel] = useState('rule_engine');
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [ollamaRunning, setOllamaRunning] = useState(false);
+  const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 加载模型列表
+  useEffect(() => {
+    loadModels();
+  }, []);
+
+  const loadModels = async () => {
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const list = await invoke<ModelInfo[]>('model_list');
+        setModels(list);
+        const status = await invoke<boolean>('ollama_status');
+        setOllamaRunning(status);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handlePullModel = async (modelId: string) => {
+    setDownloadingModel(modelId);
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('model_pull', { modelId });
+        await loadModels();
+        setMessages(prev => [...prev, {
+          id: Date.now(), role: 'ai',
+          content: `✅ 模型下载完成！现在可以切换使用了。`,
+          timestamp: Date.now(),
+        }]);
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, {
+        id: Date.now(), role: 'ai',
+        content: `❌ 模型下载失败：${e}`,
+        responseType: 'error', timestamp: Date.now(),
+      }]);
+    } finally {
+      setDownloadingModel(null);
+    }
+  };
+
+  const handleStartOllama = async () => {
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('ollama_start');
+        setTimeout(loadModels, 3000);
+      }
+    } catch { /* ignore */ }
+  };
+
   // 消息变化时保存到 localStorage
   useEffect(() => {
-    if (messages.length > 0) {
-      saveChatHistory(messages);
-    }
+    if (messages.length > 0) saveChatHistory(messages);
   }, [messages]);
 
   useEffect(() => {
@@ -170,22 +222,48 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        response = await invoke<AiResponse>('ai_parse_intent', { input: text });
 
-        // 如果本地无法解析 且 用户选择了云端或未选择本地模型时，调用云端
-        if (response.response_type === 'cloud_needed') {
+        // 根据选择的模型路由
+        if (activeModel === 'rule_engine') {
+          // 本地规则引擎
+          response = await invoke<AiResponse>('ai_parse_intent', { input: text });
+
+          if (response.response_type === 'cloud_needed') {
+            setMessages(prev => prev.map(m =>
+              m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端 AI...' } : m
+            ));
+            try {
+              const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
+              const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              response = JSON.parse(cleanJson) as AiResponse;
+            } catch {
+              response.message = '🤔 AI 云端暂时不可用，请试试更简单的表达方式。';
+              response.response_type = 'info';
+            }
+          }
+        } else if (activeModel === 'deepseek_cloud') {
+          // DeepSeek 云端
           setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端 AI...' } : m
+            m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端...' } : m
           ));
-
           try {
             const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
             const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            const parsed = JSON.parse(cleanJson) as AiResponse;
-            response = parsed;
+            response = JSON.parse(cleanJson) as AiResponse;
           } catch {
-            response.message = '🤔 AI 云端暂时不可用，请试试更简单的表达方式。\n\n例如：「打开微信」「每天9点打开Chrome」';
-            response.response_type = 'info';
+            response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
+          }
+        } else {
+          // 本地 Ollama 模型
+          setMessages(prev => prev.map(m =>
+            m.id === loadingId ? { ...m, content: `🧠 ${activeModel} 本地推理中...` } : m
+          ));
+          try {
+            const result = await invoke<string>('local_model_infer', { modelId: activeModel, input: text });
+            const cleanJson = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            response = JSON.parse(cleanJson) as AiResponse;
+          } catch (e) {
+            response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
           }
         }
       } else {
@@ -276,9 +354,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     <div className="ai-page">
       {/* 顶部模型状态栏 */}
       <div className="ai-model-bar">
-        <button className="ai-model-toggle" onClick={() => setShowModelPanel(!showModelPanel)}>
-          <span className="ai-model-dot" />
-          当前模型：{LOCAL_MODELS.find(m => m.id === activeModel)?.name || '规则引擎'}
+        <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
+          <span className={`ai-model-dot ${ollamaRunning ? '' : 'offline'}`} />
+          当前模型：{models.find(m => m.id === activeModel)?.name || '📐 本地规则引擎'}
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginLeft: 4 }}>
             <path d="M7 10l5 5 5-5z"/>
           </svg>
@@ -288,40 +366,57 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {/* 模型选择面板 */}
       {showModelPanel && (
         <div className="ai-model-panel">
-          <div className="ai-model-panel-title">选择 AI 模型</div>
-          {LOCAL_MODELS.map(model => (
+          <div className="ai-model-panel-title">
+            选择 AI 模型
+            <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: ollamaRunning ? '#22c55e' : '#ef4444' }}>
+              {ollamaRunning ? '● Ollama 运行中' : '○ Ollama 未启动'}
+            </span>
+          </div>
+          {models.map(model => (
             <div
               key={model.id}
               className={`ai-model-item ${activeModel === model.id ? 'active' : ''}`}
               onClick={() => {
-                if (model.builtin) {
+                if (model.installed) {
                   setActiveModel(model.id);
                   setShowModelPanel(false);
+                } else if (!model.downloading && downloadingModel !== model.id) {
+                  handlePullModel(model.id);
                 }
               }}
             >
               <div className="ai-model-item-left">
                 <div className="ai-model-item-name">{model.name}</div>
-                <div className="ai-model-item-desc">{model.desc}</div>
+                <div className="ai-model-item-desc">{model.description}</div>
               </div>
               <div className="ai-model-item-right">
-                {model.builtin ? (
+                {model.installed ? (
                   activeModel === model.id ? (
                     <span className="ai-model-badge active">使用中</span>
                   ) : (
                     <span className="ai-model-badge">切换</span>
                   )
+                ) : downloadingModel === model.id ? (
+                  <span className="ai-model-badge download">⏳ 下载中...</span>
                 ) : (
                   <span className="ai-model-badge download">
-                    {model.size} · 待下载
+                    {model.size} · 下载
                   </span>
                 )}
               </div>
             </div>
           ))}
-          <div className="ai-model-panel-note">
-            💡 本地模型需要下载后才能使用（后续版本支持）
-          </div>
+          {!ollamaRunning && (
+            <div className="ai-model-panel-note" style={{ cursor: 'pointer' }} onClick={handleStartOllama}>
+              ⚠️ 本地模型需要 <a href="https://ollama.ai" target="_blank" rel="noreferrer" style={{ color: '#0091FF' }}>Ollama</a> 运行。
+              <strong> 点击尝试启动</strong>
+            </div>
+          )}
+          {ollamaRunning && (
+            <div className="ai-model-panel-note">
+              ✅ Ollama 已连接。点击模型可下载或切换。
+            </div>
+          )}
         </div>
       )}
 

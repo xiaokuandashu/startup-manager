@@ -28,9 +28,28 @@ pub struct EngineStatus {
     pub models: Vec<LocalModel>,
 }
 
-/// 推理响应
+/// 推理响应 — 兼容多种 llama-server 版本
 #[derive(Debug, Deserialize)]
 struct LlamaResponse {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LlamaChoiceResponse {
+    choices: Vec<LlamaChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LlamaChoice {
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    message: Option<LlamaMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LlamaMessage {
     content: String,
 }
 
@@ -178,7 +197,6 @@ pub async fn download_engine() -> Result<String, String> {
         return Ok("引擎已安装".into());
     }
 
-    // 根据平台选择下载 URL
     #[cfg(target_os = "macos")]
     let (url, archive_name) = {
         #[cfg(target_arch = "aarch64")]
@@ -205,7 +223,6 @@ pub async fn download_engine() -> Result<String, String> {
         "llama-server"
     );
 
-    // 用 curl 下载（更可靠，支持重定向）
     let output_path = format!("{}/{}", dir, archive_name);
     let status = Command::new("curl")
         .args(["-L", "-o", &output_path, "--progress-bar", url])
@@ -216,7 +233,6 @@ pub async fn download_engine() -> Result<String, String> {
         return Err("引擎下载失败".into());
     }
 
-    // 设置可执行权限
     #[cfg(not(target_os = "windows"))]
     {
         let _ = Command::new("chmod").args(["+x", &output_path]).status();
@@ -235,7 +251,6 @@ pub async fn download_model(model_id: &str) -> Result<String, String> {
         return Err("该模型无需下载".into());
     }
 
-    // 确保引擎已安装
     if !is_engine_installed() {
         download_engine().await?;
     }
@@ -248,14 +263,12 @@ pub async fn download_model(model_id: &str) -> Result<String, String> {
         return Ok("模型已下载".into());
     }
 
-    // curl 下载模型文件
     let status = Command::new("curl")
         .args(["-L", "-o", &dest, "--progress-bar", &model.download_url])
         .status()
         .map_err(|e| format!("下载失败: {}", e))?;
 
     if !status.success() {
-        // 清理不完整文件
         let _ = std::fs::remove_file(&dest);
         return Err("模型下载失败".into());
     }
@@ -280,7 +293,6 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
 
 /// 启动 llama-server 加载指定模型
 pub fn start_engine(model_id: &str) -> Result<(), String> {
-    // 先停止已有进程
     stop_engine();
 
     let models = available_models();
@@ -337,10 +349,10 @@ pub fn stop_engine() {
     }
 }
 
-/// 使用内置引擎进行推理
+/// 使用内置引擎进行推理（兼容多种 llama-server 响应格式）
 pub async fn local_infer(user_input: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -385,8 +397,42 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         .send().await
         .map_err(|e| format!("推理请求失败: {}", e))?;
 
-    let result: LlamaResponse = resp.json().await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+    // 先获取原始文本，再尝试多种解析方式
+    let raw = resp.text().await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
 
-    Ok(result.content)
+    // 方式1：标准 {content: "..."} 格式
+    if let Ok(r) = serde_json::from_str::<LlamaResponse>(&raw) {
+        if let Some(c) = r.content {
+            return Ok(c);
+        }
+    }
+
+    // 方式2：OpenAI choices 格式
+    if let Ok(r) = serde_json::from_str::<LlamaChoiceResponse>(&raw) {
+        if let Some(choice) = r.choices.first() {
+            if let Some(ref text) = choice.text {
+                return Ok(text.clone());
+            }
+            if let Some(ref msg) = choice.message {
+                return Ok(msg.content.clone());
+            }
+        }
+    }
+
+    // 方式3：通用 JSON 取常见字段
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+        for key in &["content", "text", "result", "response"] {
+            if let Some(s) = v.get(*key).and_then(|v| v.as_str()) {
+                return Ok(s.to_string());
+            }
+        }
+    }
+
+    // 方式4：纯文本
+    if !raw.is_empty() && !raw.starts_with('{') {
+        return Ok(raw);
+    }
+
+    Err(format!("无法解析推理响应 ({}字节): {}", raw.len(), &raw[..raw.len().min(200)]))
 }

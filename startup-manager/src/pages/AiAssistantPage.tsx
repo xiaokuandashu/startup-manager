@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { StartupTask } from '../types';
 import { Language } from '../i18n';
 
 interface AiTaskResult {
@@ -33,6 +34,18 @@ interface AiAssistantPageProps {
   onAddTask?: (task: AiTaskResult) => void;
 }
 
+const CHAT_STORAGE_KEY = 'ai_chat_history';
+const TASKS_STORAGE_KEY = 'startup_tasks';
+
+// 本地模型列表
+const LOCAL_MODELS = [
+  { id: 'rule_engine', name: '📐 本地规则引擎', size: '内置', desc: '关键词匹配，离线可用，速度最快', builtin: true },
+  { id: 'deepseek_cloud', name: '☁️ DeepSeek 云端', size: '在线', desc: '理解复杂指令，需要网络', builtin: true },
+  { id: 'qwen2_1.5b', name: '🧠 Qwen2.5-1.5B', size: '1.1GB', desc: '通义千问小模型，中文表现好', builtin: false },
+  { id: 'phi3_mini', name: '🧠 Phi-3 Mini', size: '2.2GB', desc: '微软小模型，推理能力强', builtin: false },
+  { id: 'gemma2_2b', name: '🧠 Gemma 2 2B', size: '1.6GB', desc: 'Google 轻量级模型', builtin: false },
+];
+
 const QUICK_COMMANDS = [
   { label: '打开微信', icon: '💬' },
   { label: '每天9点打开Chrome', icon: '🌐' },
@@ -49,19 +62,80 @@ const SCHEDULE_LABELS: Record<string, string> = {
   monthly: '🗓️ 每月',
 };
 
-const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTask }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 0,
-      role: 'ai',
-      content: '👋 你好！我是 AI 助手。\n\n告诉我你想做什么，我来帮你创建自动化任务。\n\n比如：「打开微信」「每天9点打开Chrome」「开机启动钉钉」',
-      timestamp: Date.now(),
+const WELCOME_MSG: ChatMessage = {
+  id: 0,
+  role: 'ai',
+  content: '👋 你好！我是 AI 助手。\n\n告诉我你想做什么，我来帮你创建自动化任务。\n\n比如：「打开微信」「每天9点打开Chrome」「开机启动钉钉」',
+  timestamp: Date.now(),
+};
+
+// 加载聊天历史
+const loadChatHistory = (): ChatMessage[] => {
+  try {
+    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as ChatMessage[];
+      if (parsed.length > 0) return parsed;
     }
-  ]);
+  } catch (e) { /* ignore */ }
+  return [WELCOME_MSG];
+};
+
+// 保存聊天历史
+const saveChatHistory = (messages: ChatMessage[]) => {
+  try {
+    // 过滤掉 loading 消息，保存最近 100 条
+    const toSave = messages.filter(m => !m.loading).slice(-100);
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(toSave));
+  } catch (e) { /* ignore */ }
+};
+
+// 映射 AI 任务到 HomePage 的 StartupTask 格式
+const mapToStartupTask = (task: AiTaskResult): StartupTask => {
+  const timeTypeMap: Record<string, string> = {
+    startup: '计算机启动时',
+    once: '一次',
+    daily: '每日循环',
+    weekly: '每周',
+    monthly: '每月',
+  };
+  const taskTypeMap: Record<string, string> = {
+    application: '打开应用',
+    script: '打开执行文件',
+    path: '路径打开应用',
+  };
+
+  return {
+    id: Date.now().toString() + '_' + Math.random().toString(36).slice(2, 6),
+    name: task.task_name,
+    path: task.path,
+    enabled: task.enabled,
+    type: task.task_type === 'script' ? 'script' : 'application',
+    taskType: taskTypeMap[task.task_type] || '打开应用',
+    timeType: timeTypeMap[task.schedule_type] || '一次',
+    executeTime: task.schedule_time || '',
+    timeUntilExec: '',
+    status: 'stopped' as const,
+    note: `AI 创建 · ${timeTypeMap[task.schedule_type] || ''}`,
+    fileExt: task.path.includes('.') ? '.' + task.path.split('.').pop() : undefined,
+  };
+};
+
+const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTask }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>(loadChatHistory);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showModelPanel, setShowModelPanel] = useState(false);
+  const [activeModel, setActiveModel] = useState('rule_engine');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 消息变化时保存到 localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveChatHistory(messages);
+    }
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -82,7 +156,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     setInput('');
     setIsLoading(true);
 
-    // 添加 loading 消息
     const loadingId = Date.now() + 1;
     setMessages(prev => [...prev, {
       id: loadingId,
@@ -95,31 +168,27 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       let response: AiResponse;
 
-      // 先尝试本地规则引擎
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
         response = await invoke<AiResponse>('ai_parse_intent', { input: text });
 
-        // 如果本地无法解析，调用云端 DeepSeek
+        // 如果本地无法解析 且 用户选择了云端或未选择本地模型时，调用云端
         if (response.response_type === 'cloud_needed') {
           setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🌐 正在联系 AI 云端...' } : m
+            m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端 AI...' } : m
           ));
 
           try {
             const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
-            // 解析云端 JSON 响应
             const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             const parsed = JSON.parse(cleanJson) as AiResponse;
             response = parsed;
-          } catch (cloudErr) {
-            // 云端失败，使用本地结果
+          } catch {
             response.message = '🤔 AI 云端暂时不可用，请试试更简单的表达方式。\n\n例如：「打开微信」「每天9点打开Chrome」';
             response.response_type = 'info';
           }
         }
       } else {
-        // 开发模式模拟
         response = {
           message: `📋 模拟解析：「${text}」\n\n这是开发模式，实际运行时将调用 AI 引擎。`,
           response_type: 'info',
@@ -127,7 +196,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         };
       }
 
-      // 替换 loading 消息为实际回复
       const aiMsg: ChatMessage = {
         id: loadingId,
         role: 'ai',
@@ -138,7 +206,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       };
       setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
 
-    } catch (err) {
+    } catch {
       setMessages(prev => prev.map(m =>
         m.id === loadingId ? {
           ...m,
@@ -153,34 +221,22 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     }
   };
 
-  const handleAddTask = async (task: AiTaskResult) => {
+  const handleAddTask = (task: AiTaskResult) => {
     if (onAddTask) {
       onAddTask(task);
     }
 
-    // 保存到 localStorage 任务列表
+    // 保存到 startup_tasks（HomePage 使用的格式）
     try {
-      const existing = JSON.parse(localStorage.getItem('tasks') || '[]');
-      const newTask = {
-        id: Date.now().toString(),
-        name: task.task_name,
-        path: task.path,
-        type: task.task_type,
-        scheduleType: task.schedule_type,
-        scheduleTime: task.schedule_time,
-        scheduleDays: task.schedule_days,
-        enabled: task.enabled,
-        createdAt: new Date().toISOString(),
-        source: 'ai',
-      };
+      const existing: StartupTask[] = JSON.parse(localStorage.getItem(TASKS_STORAGE_KEY) || '[]');
+      const newTask = mapToStartupTask(task);
       existing.push(newTask);
-      localStorage.setItem('tasks', JSON.stringify(existing));
+      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(existing));
 
-      // 添加成功消息
       setMessages(prev => [...prev, {
         id: Date.now(),
         role: 'ai',
-        content: `✅ 任务「${task.task_name}」已添加到任务列表！\n\n你可以在主页查看和管理它。`,
+        content: `✅ 任务「${task.task_name}」已添加到主页任务列表！\n\n切换到主页即可看到。`,
         timestamp: Date.now(),
       }]);
     } catch (e) {
@@ -206,16 +262,69 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   };
 
   const clearHistory = () => {
-    setMessages([{
+    const msg: ChatMessage = {
       id: Date.now(),
       role: 'ai',
       content: '👋 对话已清空。告诉我你想做什么吧！',
       timestamp: Date.now(),
-    }]);
+    };
+    setMessages([msg]);
+    localStorage.removeItem(CHAT_STORAGE_KEY);
   };
 
   return (
     <div className="ai-page">
+      {/* 顶部模型状态栏 */}
+      <div className="ai-model-bar">
+        <button className="ai-model-toggle" onClick={() => setShowModelPanel(!showModelPanel)}>
+          <span className="ai-model-dot" />
+          当前模型：{LOCAL_MODELS.find(m => m.id === activeModel)?.name || '规则引擎'}
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginLeft: 4 }}>
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* 模型选择面板 */}
+      {showModelPanel && (
+        <div className="ai-model-panel">
+          <div className="ai-model-panel-title">选择 AI 模型</div>
+          {LOCAL_MODELS.map(model => (
+            <div
+              key={model.id}
+              className={`ai-model-item ${activeModel === model.id ? 'active' : ''}`}
+              onClick={() => {
+                if (model.builtin) {
+                  setActiveModel(model.id);
+                  setShowModelPanel(false);
+                }
+              }}
+            >
+              <div className="ai-model-item-left">
+                <div className="ai-model-item-name">{model.name}</div>
+                <div className="ai-model-item-desc">{model.desc}</div>
+              </div>
+              <div className="ai-model-item-right">
+                {model.builtin ? (
+                  activeModel === model.id ? (
+                    <span className="ai-model-badge active">使用中</span>
+                  ) : (
+                    <span className="ai-model-badge">切换</span>
+                  )
+                ) : (
+                  <span className="ai-model-badge download">
+                    {model.size} · 待下载
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="ai-model-panel-note">
+            💡 本地模型需要下载后才能使用（后续版本支持）
+          </div>
+        </div>
+      )}
+
       {/* 消息列表 */}
       <div className="ai-messages">
         {messages.map(msg => (
@@ -236,7 +345,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       .replace(/`(.*?)`/g, '<code>$1</code>')
                       .replace(/\n/g, '<br/>')
                   }} />
-                  {/* 任务卡片 */}
                   {msg.tasks && msg.tasks.length > 0 && (
                     <div className="ai-task-cards">
                       {msg.tasks.map((task, i) => (
@@ -264,7 +372,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                               className="ai-btn-add-task"
                               onClick={() => handleAddTask(task)}
                             >
-                              ✅ 添加任务
+                              ✅ 添加到主页
                             </button>
                           </div>
                         </div>

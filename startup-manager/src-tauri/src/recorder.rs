@@ -34,6 +34,217 @@ pub struct Recording {
     pub duration_ms: u64,
     pub step_count: usize,
     pub steps: Vec<RecordedStep>,
+    #[serde(default)]
+    pub mode: RecordingMode,
+    #[serde(default)]
+    pub nodes: Vec<RecordingNode>,
+}
+
+// ======== 录制模式 ========
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordingMode {
+    Full,         // 全量录制
+    MouseOnly,    // 仅鼠标
+    KeyboardOnly, // 仅键盘
+    Smart,        // 智能模式
+    Screenshot,   // 截图模式
+    Element,      // UI 元素模式
+}
+
+impl Default for RecordingMode {
+    fn default() -> Self { RecordingMode::Full }
+}
+
+// ======== 树状节点 ========
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingNode {
+    pub id: String,
+    pub node_type: NodeType,
+    pub label: String,
+    pub enabled: bool,
+    pub children: Vec<String>,          // 子节点 id 列表
+    pub condition: Option<ConditionRule>,
+    pub action: Option<NodeAction>,
+    pub delay_ms: u64,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeType {
+    Action,     // 🔵 执行操作
+    Condition,  // 🔶 if/else 分支
+    Wait,       // ⏳ 等待
+    Loop,       // 🔄 循环
+    OpenApp,    // 📂 打开应用
+    SubFlow,    // 📦 子流程
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeAction {
+    pub steps: Vec<RecordedStep>,       // 此节点包含的操作步骤
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConditionRule {
+    pub rule_type: ConditionType,
+    pub target: String,                 // 检测目标（窗口标题/坐标/文字）
+    pub value: String,                  // 期望值
+    pub timeout_ms: u64,               // 超时时间
+    pub true_branch: Vec<String>,      // 条件为真时走的子节点 id
+    pub false_branch: Vec<String>,     // 条件为假时走的子节点 id
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConditionType {
+    WindowExists,    // 窗口是否存在
+    PopupDetected,   // 弹窗检测
+    PixelColor,      // 像素颜色匹配
+    TextMatch,       // 文字识别 (OCR)
+    Timeout,         // 超时判断
+}
+
+// ======== 节点工具函数 ========
+
+/// 从线性步骤列表生成初始节点树（每个步骤 = 一个 Action 节点）
+pub fn steps_to_nodes(steps: &[RecordedStep]) -> Vec<RecordingNode> {
+    let mut nodes = Vec::new();
+    let mut child_ids = Vec::new();
+
+    for (i, step) in steps.iter().enumerate() {
+        let id = format!("node_{}", i);
+        let label = match step {
+            RecordedStep::MouseClick { button, x, y, .. } => format!("点击 {}({:.0},{:.0})", button, x, y),
+            RecordedStep::MouseMove { x, y, .. } => format!("移动 ({:.0},{:.0})", x, y),
+            RecordedStep::MouseRelease { button, .. } => format!("释放 {}", button),
+            RecordedStep::MouseScroll { delta_y, .. } => format!("滚动 {}", delta_y),
+            RecordedStep::KeyPress { key, .. } => format!("按下 {}", key),
+            RecordedStep::KeyRelease { key, .. } => format!("松开 {}", key),
+        };
+
+        child_ids.push(id.clone());
+        nodes.push(RecordingNode {
+            id,
+            node_type: NodeType::Action,
+            label,
+            enabled: true,
+            children: vec![],
+            condition: None,
+            action: Some(NodeAction { steps: vec![step.clone()] }),
+            delay_ms: match step {
+                RecordedStep::MouseMove { delay_ms, .. } |
+                RecordedStep::MouseClick { delay_ms, .. } |
+                RecordedStep::MouseRelease { delay_ms, .. } |
+                RecordedStep::MouseScroll { delay_ms, .. } |
+                RecordedStep::KeyPress { delay_ms, .. } |
+                RecordedStep::KeyRelease { delay_ms, .. } => *delay_ms,
+            },
+            note: String::new(),
+        });
+    }
+
+    // 只保留非 mouse_move 的关键节点以简化树（智能模式）
+    nodes
+}
+
+/// 在节点列表中插入新节点（在 after_id 后面）
+pub fn insert_node_after(nodes: &mut Vec<RecordingNode>, after_id: &str, new_node: RecordingNode) {
+    let pos = nodes.iter().position(|n| n.id == after_id).map(|p| p + 1).unwrap_or(nodes.len());
+    nodes.insert(pos, new_node);
+}
+
+/// 删除节点
+pub fn delete_node(nodes: &mut Vec<RecordingNode>, node_id: &str) {
+    nodes.retain(|n| n.id != node_id);
+    // 清理其他节点的 children 引用
+    for node in nodes.iter_mut() {
+        node.children.retain(|c| c != node_id);
+        if let Some(ref mut cond) = node.condition {
+            cond.true_branch.retain(|c| c != node_id);
+            cond.false_branch.retain(|c| c != node_id);
+        }
+    }
+}
+
+/// 更新节点属性
+pub fn update_node(nodes: &mut Vec<RecordingNode>, updated: RecordingNode) {
+    if let Some(n) = nodes.iter_mut().find(|n| n.id == updated.id) {
+        *n = updated;
+    }
+}
+
+/// 移动节点顺序 (from_idx -> to_idx)
+pub fn move_node(nodes: &mut Vec<RecordingNode>, from_idx: usize, to_idx: usize) {
+    if from_idx < nodes.len() && to_idx < nodes.len() {
+        let node = nodes.remove(from_idx);
+        nodes.insert(to_idx, node);
+    }
+}
+
+/// 创建条件节点
+pub fn create_condition_node(id: &str, label: &str, rule: ConditionRule) -> RecordingNode {
+    RecordingNode {
+        id: id.to_string(),
+        node_type: NodeType::Condition,
+        label: label.to_string(),
+        enabled: true,
+        children: vec![],
+        condition: Some(rule),
+        action: None,
+        delay_ms: 0,
+        note: String::new(),
+    }
+}
+
+/// 创建等待节点
+pub fn create_wait_node(id: &str, wait_ms: u64) -> RecordingNode {
+    RecordingNode {
+        id: id.to_string(),
+        node_type: NodeType::Wait,
+        label: format!("等待 {}ms", wait_ms),
+        enabled: true,
+        children: vec![],
+        condition: None,
+        action: None,
+        delay_ms: wait_ms,
+        note: String::new(),
+    }
+}
+
+/// 创建循环节点
+pub fn create_loop_node(id: &str, label: &str, times: u32) -> RecordingNode {
+    RecordingNode {
+        id: id.to_string(),
+        node_type: NodeType::Loop,
+        label: format!("{} (×{})", label, times),
+        enabled: true,
+        children: vec![],
+        condition: None,
+        action: None,
+        delay_ms: 0,
+        note: format!("repeat:{}", times),
+    }
+}
+
+/// 创建打开应用节点
+pub fn create_open_app_node(id: &str, app_path: &str) -> RecordingNode {
+    let app_name = std::path::Path::new(app_path).file_stem()
+        .and_then(|s| s.to_str()).unwrap_or(app_path);
+    RecordingNode {
+        id: id.to_string(),
+        node_type: NodeType::OpenApp,
+        label: format!("打开 {}", app_name),
+        enabled: true,
+        children: vec![],
+        condition: None,
+        action: Some(NodeAction { steps: vec![] }),
+        delay_ms: 0,
+        note: app_path.to_string(),
+    }
 }
 
 /// 录制状态

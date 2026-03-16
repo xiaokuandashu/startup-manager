@@ -690,7 +690,16 @@ fn recording_play(steps: Vec<recorder::RecordedStep>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn recording_save(name: String, steps: Vec<recorder::RecordedStep>, duration_ms: u64) -> Result<String, String> {
+fn recording_save(name: String, steps: Vec<recorder::RecordedStep>, duration_ms: u64, mode: Option<String>) -> Result<String, String> {
+    let rec_mode = match mode.as_deref() {
+        Some("mouse_only") => recorder::RecordingMode::MouseOnly,
+        Some("keyboard_only") => recorder::RecordingMode::KeyboardOnly,
+        Some("smart") => recorder::RecordingMode::Smart,
+        Some("screenshot") => recorder::RecordingMode::Screenshot,
+        Some("element") => recorder::RecordingMode::Element,
+        _ => recorder::RecordingMode::Full,
+    };
+    let nodes = recorder::steps_to_nodes(&steps);
     let recording = recorder::Recording {
         id: format!("{}", std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -705,6 +714,8 @@ fn recording_save(name: String, steps: Vec<recorder::RecordedStep>, duration_ms:
         duration_ms,
         step_count: steps.len(),
         steps,
+        mode: rec_mode,
+        nodes,
     };
     recorder::save_recording_to_file(&recording)
 }
@@ -717,6 +728,76 @@ fn recording_list() -> Result<Vec<recorder::Recording>, String> {
 #[tauri::command]
 fn recording_delete(id: String) -> Result<(), String> {
     recorder::delete_recording(&id)
+}
+
+// ======== 节点编辑 commands ========
+
+#[tauri::command]
+fn recording_update_nodes(id: String, nodes: Vec<recorder::RecordingNode>) -> Result<(), String> {
+    let mut recordings = recorder::list_recordings()?;
+    if let Some(rec) = recordings.iter_mut().find(|r| r.id == id) {
+        rec.nodes = nodes;
+        recorder::save_recording_to_file(rec)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn recording_add_node(id: String, after_node_id: String, node_type: String, label: String, delay_ms: Option<u64>) -> Result<Vec<recorder::RecordingNode>, String> {
+    let mut recordings = recorder::list_recordings()?;
+    let rec = recordings.iter_mut().find(|r| r.id == id).ok_or("录制不存在")?;
+
+    let new_id = format!("node_{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis());
+
+    let new_node = match node_type.as_str() {
+        "condition" => recorder::create_condition_node(&new_id, &label, recorder::ConditionRule {
+            rule_type: recorder::ConditionType::WindowExists,
+            target: String::new(),
+            value: String::new(),
+            timeout_ms: 5000,
+            true_branch: vec![],
+            false_branch: vec![],
+        }),
+        "wait" => recorder::create_wait_node(&new_id, delay_ms.unwrap_or(1000)),
+        "loop" => recorder::create_loop_node(&new_id, &label, 3),
+        "open_app" => recorder::create_open_app_node(&new_id, &label),
+        _ => recorder::RecordingNode {
+            id: new_id.clone(),
+            node_type: recorder::NodeType::Action,
+            label,
+            enabled: true,
+            children: vec![],
+            condition: None,
+            action: Some(recorder::NodeAction { steps: vec![] }),
+            delay_ms: delay_ms.unwrap_or(0),
+            note: String::new(),
+        },
+    };
+
+    recorder::insert_node_after(&mut rec.nodes, &after_node_id, new_node);
+    recorder::save_recording_to_file(rec)?;
+    Ok(rec.nodes.clone())
+}
+
+#[tauri::command]
+fn recording_delete_node(id: String, node_id: String) -> Result<Vec<recorder::RecordingNode>, String> {
+    let mut recordings = recorder::list_recordings()?;
+    let rec = recordings.iter_mut().find(|r| r.id == id).ok_or("录制不存在")?;
+    recorder::delete_node(&mut rec.nodes, &node_id);
+    recorder::save_recording_to_file(rec)?;
+    Ok(rec.nodes.clone())
+}
+
+#[tauri::command]
+fn recording_move_node(id: String, from_idx: usize, to_idx: usize) -> Result<Vec<recorder::RecordingNode>, String> {
+    let mut recordings = recorder::list_recordings()?;
+    let rec = recordings.iter_mut().find(|r| r.id == id).ok_or("录制不存在")?;
+    recorder::move_node(&mut rec.nodes, from_idx, to_idx);
+    recorder::save_recording_to_file(rec)?;
+    Ok(rec.nodes.clone())
 }
 
 // ======== 本地推理引擎 Tauri commands ========
@@ -909,6 +990,10 @@ pub fn run() {
             recording_save,
             recording_list,
             recording_delete,
+            recording_update_nodes,
+            recording_add_node,
+            recording_delete_node,
+            recording_move_node,
             engine_status,
             engine_download,
             model_list,

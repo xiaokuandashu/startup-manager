@@ -12,6 +12,18 @@ interface RecordedStep {
   delay_ms: number;
 }
 
+interface RecordingNode {
+  id: string;
+  node_type: string;
+  label: string;
+  enabled: boolean;
+  children: string[];
+  condition: any;
+  action: any;
+  delay_ms: number;
+  note: string;
+}
+
 interface SavedRecording {
   id: string;
   name: string;
@@ -19,35 +31,39 @@ interface SavedRecording {
   duration_ms: number;
   step_count: number;
   steps: RecordedStep[];
+  mode?: string;
+  nodes?: RecordingNode[];
 }
 
 interface RecordingPageProps {
   lang?: Language;
 }
 
-const STEP_ICONS: Record<string, string> = {
-  mouse_move: '🖱️',
-  mouse_click: '👆',
-  mouse_release: '👆',
-  mouse_scroll: '📜',
-  key_press: '⌨️',
-  key_release: '⌨️',
+const NODE_ICONS: Record<string, string> = {
+  action: '🔵', condition: '🔶', wait: '⏳', loop: '🔄', open_app: '📂', sub_flow: '📦',
 };
 
-const STEP_LABELS: Record<string, string> = {
-  mouse_move: '鼠标移动',
-  mouse_click: '鼠标点击',
-  mouse_release: '鼠标释放',
-  mouse_scroll: '滚轮',
-  key_press: '按下按键',
-  key_release: '释放按键',
+const NODE_LABELS: Record<string, string> = {
+  action: '操作', condition: '条件', wait: '等待', loop: '循环', open_app: '打开应用', sub_flow: '子流程',
+};
+
+const MODE_OPTIONS = [
+  { id: 'full', label: '🖱️ 全量', desc: '鼠标+键盘' },
+  { id: 'mouse_only', label: '🖱️ 仅鼠标', desc: '点击/滚轮' },
+  { id: 'keyboard_only', label: '⌨️ 仅键盘', desc: '按键输入' },
+  { id: 'smart', label: '🧠 智能', desc: '自动过滤' },
+  { id: 'screenshot', label: '📸 截图', desc: '每步截图' },
+  { id: 'element', label: '🎯 元素', desc: 'UI元素' },
+];
+
+const STEP_ICONS: Record<string, string> = {
+  mouse_move: '🖱️', mouse_click: '👆', mouse_release: '👆', mouse_scroll: '📜', key_press: '⌨️', key_release: '⌨️',
 };
 
 const formatDuration = (ms: number): string => {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
-  const ss = s % 60;
-  return `${m}:${String(ss).padStart(2, '0')}`;
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
 };
 
 const formatDate = (ts: string): string => {
@@ -65,11 +81,15 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
   const [saveName, setSaveName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [recordMode, setRecordMode] = useState('full');
+  // 节点编辑
+  const [editingRec, setEditingRec] = useState<SavedRecording | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null);
+
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  useEffect(() => {
-    loadRecordings();
-  }, []);
+  useEffect(() => { loadRecordings(); }, []);
 
   useEffect(() => {
     if (recordingState === 'recording') {
@@ -80,17 +100,14 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [recordingState]);
 
-  // 轮询录制状态
   useEffect(() => {
     if (recordingState === 'idle') return;
     const poll = setInterval(async () => {
       try {
         if ((window as any).__TAURI_INTERNALS__) {
           const { invoke } = await import('@tauri-apps/api/core');
-          const status = await invoke<{ state: string; step_count: number; duration_ms: number }>('recording_status');
-          if (status.state === 'idle') {
-            setRecordingState('idle');
-          }
+          const status = await invoke<{ state: string }>('recording_status');
+          if (status.state === 'idle') setRecordingState('idle');
         }
       } catch { /* ignore */ }
     }, 1000);
@@ -116,9 +133,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
         setSteps([]);
         setTimer(0);
       }
-    } catch (e) {
-      alert('启动录制失败：' + e);
-    }
+    } catch (e) { alert('启动录制失败：' + e); }
   };
 
   const handlePause = async () => {
@@ -149,32 +164,22 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('recording_save', {
-          name: saveName.trim(),
-          steps: steps,
-          durationMs: timer * 1000,
+          name: saveName.trim(), steps, durationMs: timer * 1000, mode: recordMode,
         });
-        setSaveName('');
-        setShowSaveDialog(false);
-        setSteps([]);
-        loadRecordings();
+        setSaveName(''); setShowSaveDialog(false); setSteps([]); loadRecordings();
       }
-    } catch (e) {
-      alert('保存失败：' + e);
-    }
+    } catch (e) { alert('保存失败：' + e); }
   };
 
-  const handlePlay = async (recording: SavedRecording) => {
+  const handlePlay = async (rec: SavedRecording) => {
     setIsPlaying(true);
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('recording_play', { steps: recording.steps });
-        // 等待回放时间
-        setTimeout(() => setIsPlaying(false), recording.duration_ms + 2000);
+        await invoke('recording_play', { steps: rec.steps });
+        setTimeout(() => setIsPlaying(false), rec.duration_ms + 2000);
       }
-    } catch {
-      setIsPlaying(false);
-    }
+    } catch { setIsPlaying(false); }
   };
 
   const handleDelete = async (id: string) => {
@@ -182,30 +187,229 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('recording_delete', { id });
+        if (editingRec?.id === id) setEditingRec(null);
         loadRecordings();
       }
     } catch { /* ignore */ }
   };
 
-  const removeStep = (index: number) => {
-    setSteps(prev => prev.filter((_, i) => i !== index));
+  // 节点操作
+  const handleAddNode = async (nodeType: string) => {
+    if (!editingRec) return;
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const afterId = selectedNode || editingRec.nodes?.[editingRec.nodes.length - 1]?.id || '';
+        const label = nodeType === 'wait' ? '等待 1000ms' : nodeType === 'condition' ? '条件检测' : nodeType === 'loop' ? '循环' : nodeType === 'open_app' ? '/Applications/' : '新操作';
+        const nodes = await invoke<RecordingNode[]>('recording_add_node', {
+          id: editingRec.id, afterNodeId: afterId, nodeType, label, delayMs: nodeType === 'wait' ? 1000 : undefined,
+        });
+        setEditingRec({ ...editingRec, nodes });
+      }
+    } catch { /* ignore */ }
   };
 
+  const handleDeleteNode = async (nodeId: string) => {
+    if (!editingRec) return;
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const nodes = await invoke<RecordingNode[]>('recording_delete_node', {
+          id: editingRec.id, nodeId,
+        });
+        setEditingRec({ ...editingRec, nodes });
+        if (selectedNode === nodeId) setSelectedNode(null);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleMoveNode = async (fromIdx: number, toIdx: number) => {
+    if (!editingRec) return;
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const nodes = await invoke<RecordingNode[]>('recording_move_node', {
+          id: editingRec.id, fromIdx, toIdx,
+        });
+        setEditingRec({ ...editingRec, nodes });
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleToggleNode = async (nodeId: string) => {
+    if (!editingRec || !editingRec.nodes) return;
+    const updated = editingRec.nodes.map(n => n.id === nodeId ? { ...n, enabled: !n.enabled } : n);
+    setEditingRec({ ...editingRec, nodes: updated });
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('recording_update_nodes', { id: editingRec.id, nodes: updated });
+      }
+    } catch { /* ignore */ }
+  };
+
+  const selectedNodeData = editingRec?.nodes?.find(n => n.id === selectedNode);
+
+  // ========== 编辑视图 ==========
+  if (editingRec) {
+    const nodes = editingRec.nodes || [];
+    return (
+      <div className="rec-page">
+        {/* 顶部工具栏 */}
+        <div className="rec-editor-toolbar">
+          <button className="rec-btn rec-btn-back" onClick={() => { setEditingRec(null); setSelectedNode(null); }}>
+            ← 返回
+          </button>
+          <h3>📝 编辑: {editingRec.name}</h3>
+          <div className="rec-editor-info">
+            {nodes.length} 个节点 · {formatDuration(editingRec.duration_ms)}
+          </div>
+        </div>
+
+        {/* 添加节点工具栏 */}
+        <div className="rec-node-toolbar">
+          <span className="rec-node-toolbar-label">新增节点:</span>
+          {[
+            { type: 'action', icon: '🔵', label: '操作' },
+            { type: 'condition', icon: '🔶', label: '条件' },
+            { type: 'wait', icon: '⏳', label: '等待' },
+            { type: 'loop', icon: '🔄', label: '循环' },
+            { type: 'open_app', icon: '📂', label: '打开应用' },
+          ].map(btn => (
+            <button key={btn.type} className="rec-node-add-btn" onClick={() => handleAddNode(btn.type)}>
+              {btn.icon} {btn.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="rec-editor-body">
+          {/* 节点树列表 */}
+          <div className="rec-node-list">
+            {nodes.length === 0 ? (
+              <div className="rec-empty">
+                <div className="rec-empty-icon">🌳</div>
+                <div className="rec-empty-text">暂无节点，使用工具栏添加</div>
+              </div>
+            ) : nodes.map((node, idx) => (
+              <div
+                key={node.id}
+                className={`rec-node-item ${selectedNode === node.id ? 'selected' : ''} ${!node.enabled ? 'disabled' : ''} ${dragNodeIdx === idx ? 'dragging' : ''}`}
+                draggable
+                onClick={() => setSelectedNode(node.id)}
+                onDragStart={() => setDragNodeIdx(idx)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => {
+                  if (dragNodeIdx !== null && dragNodeIdx !== idx) handleMoveNode(dragNodeIdx, idx);
+                  setDragNodeIdx(null);
+                }}
+                onDragEnd={() => setDragNodeIdx(null)}
+              >
+                <div className="rec-node-drag">⠿</div>
+                <div className="rec-node-connector" />
+                <span className="rec-node-icon">{NODE_ICONS[node.node_type] || '❓'}</span>
+                <div className="rec-node-info">
+                  <div className="rec-node-label">{node.label}</div>
+                  <div className="rec-node-meta">
+                    {NODE_LABELS[node.node_type] || node.node_type}
+                    {node.delay_ms > 0 && ` · ${node.delay_ms}ms`}
+                  </div>
+                </div>
+                <div className="rec-node-actions">
+                  <button className={`rec-node-toggle ${node.enabled ? '' : 'off'}`} onClick={e => { e.stopPropagation(); handleToggleNode(node.id); }}>
+                    {node.enabled ? '✓' : '○'}
+                  </button>
+                  <button className="rec-node-del" onClick={e => { e.stopPropagation(); handleDeleteNode(node.id); }}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 属性面板 */}
+          {selectedNodeData && (
+            <div className="rec-prop-panel">
+              <h4>{NODE_ICONS[selectedNodeData.node_type]} {selectedNodeData.label}</h4>
+              <div className="rec-prop-row">
+                <label>类型</label>
+                <span>{NODE_LABELS[selectedNodeData.node_type] || selectedNodeData.node_type}</span>
+              </div>
+              <div className="rec-prop-row">
+                <label>延迟</label>
+                <span>{selectedNodeData.delay_ms}ms</span>
+              </div>
+              <div className="rec-prop-row">
+                <label>状态</label>
+                <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
+              </div>
+              {selectedNodeData.note && (
+                <div className="rec-prop-row">
+                  <label>备注</label>
+                  <span>{selectedNodeData.note}</span>
+                </div>
+              )}
+              {selectedNodeData.condition && (
+                <div className="rec-prop-section">
+                  <h5>条件规则</h5>
+                  <div className="rec-prop-row">
+                    <label>规则类型</label>
+                    <span>{selectedNodeData.condition.rule_type}</span>
+                  </div>
+                  <div className="rec-prop-row">
+                    <label>检测目标</label>
+                    <span>{selectedNodeData.condition.target || '未设置'}</span>
+                  </div>
+                  <div className="rec-prop-row">
+                    <label>超时</label>
+                    <span>{selectedNodeData.condition.timeout_ms}ms</span>
+                  </div>
+                </div>
+              )}
+              {selectedNodeData.action?.steps?.length > 0 && (
+                <div className="rec-prop-section">
+                  <h5>操作步骤 ({selectedNodeData.action.steps.length})</h5>
+                  {selectedNodeData.action.steps.map((s: any, i: number) => (
+                    <div key={i} className="rec-prop-step">
+                      {STEP_ICONS[s.type] || '•'} {s.type} {s.x !== undefined && `(${Math.round(s.x)},${Math.round(s.y||0)})`} {s.key || ''} {s.button || ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ========== 主视图（录制 + 列表）==========
   return (
     <div className="rec-page">
       {/* 录制控制面板 */}
       <div className="rec-control-panel">
         <div className="rec-control-header">
           <h3>🎬 操作录制</h3>
-          <span className="rec-hint">录制鼠标和键盘操作，保存后可重复回放</span>
+          <span className="rec-hint">录制鼠标和键盘操作，保存后可编辑和回放</span>
         </div>
+
+        {/* 录制模式选择 */}
+        {recordingState === 'idle' && (
+          <div className="rec-mode-selector">
+            {MODE_OPTIONS.map(m => (
+              <button
+                key={m.id}
+                className={`rec-mode-btn ${recordMode === m.id ? 'active' : ''}`}
+                onClick={() => setRecordMode(m.id)}
+              >
+                <span className="rec-mode-label">{m.label}</span>
+                <span className="rec-mode-desc">{m.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="rec-control-body">
           {recordingState === 'idle' ? (
             <button className="rec-btn rec-btn-start" onClick={handleStart} disabled={isPlaying}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
               开始录制
             </button>
           ) : (
@@ -219,18 +423,14 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                 <button className="rec-btn rec-btn-pause" onClick={handlePause}>
                   {recordingState === 'paused' ? '▶ 继续' : '⏸ 暂停'}
                 </button>
-                <button className="rec-btn rec-btn-stop" onClick={handleStop}>
-                  ⏹ 停止
-                </button>
+                <button className="rec-btn rec-btn-stop" onClick={handleStop}>⏹ 停止</button>
               </div>
             </div>
           )}
         </div>
 
         {recordingState !== 'idle' && (
-          <div className="rec-permission-note">
-            ⚠️ macOS 需在「系统设置 → 隐私安全 → 辅助功能」中授权自启精灵
-          </div>
+          <div className="rec-permission-note">⚠️ macOS 需在「系统设置 → 隐私安全 → 辅助功能」中授权</div>
         )}
       </div>
 
@@ -239,7 +439,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
         <div className="rec-save-dialog">
           <div className="rec-save-dialog-inner">
             <h4>保存录制</h4>
-            <p>已录制 {steps.length} 个操作步骤</p>
+            <p>已录制 {steps.length} 个操作步骤（{MODE_OPTIONS.find(m => m.id === recordMode)?.label}模式）</p>
             <input
               className="rec-save-input"
               placeholder="输入录制名称..."
@@ -249,38 +449,9 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
               onKeyDown={e => e.key === 'Enter' && handleSave()}
             />
             <div className="rec-save-actions">
-              <button className="rec-btn rec-btn-cancel" onClick={() => { setShowSaveDialog(false); setSteps([]); }}>
-                丢弃
-              </button>
-              <button className="rec-btn rec-btn-save" onClick={handleSave} disabled={!saveName.trim()}>
-                💾 保存
-              </button>
+              <button className="rec-btn rec-btn-cancel" onClick={() => { setShowSaveDialog(false); setSteps([]); }}>丢弃</button>
+              <button className="rec-btn rec-btn-save" onClick={handleSave} disabled={!saveName.trim()}>💾 保存</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 录制后步骤预览 */}
-      {steps.length > 0 && !showSaveDialog && (
-        <div className="rec-steps-preview">
-          <h4>录制步骤（{steps.length}）</h4>
-          <div className="rec-steps-list">
-            {steps.slice(0, 50).map((step, i) => (
-              <div key={i} className="rec-step-item">
-                <span className="rec-step-icon">{STEP_ICONS[step.type] || '❓'}</span>
-                <span className="rec-step-label">{STEP_LABELS[step.type] || step.type}</span>
-                <span className="rec-step-detail">
-                  {step.x !== undefined && `(${Math.round(step.x)}, ${Math.round(step.y || 0)})`}
-                  {step.key && step.key}
-                  {step.button && step.button}
-                </span>
-                <span className="rec-step-delay">{step.delay_ms}ms</span>
-                <button className="rec-step-delete" onClick={() => removeStep(i)}>✕</button>
-              </div>
-            ))}
-            {steps.length > 50 && (
-              <div className="rec-step-more">... 还有 {steps.length - 50} 个步骤</div>
-            )}
           </div>
         </div>
       )}
@@ -291,7 +462,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
         {savedRecordings.length === 0 ? (
           <div className="rec-empty">
             <div className="rec-empty-icon">🎬</div>
-            <div className="rec-empty-text">暂无录制，点击上方「开始录制」</div>
+            <div className="rec-empty-text">暂无录制，选择模式后点击「开始录制」</div>
           </div>
         ) : (
           <div className="rec-cards">
@@ -304,21 +475,16 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                 <div className="rec-card-info">
                   <span>🕐 {formatDuration(rec.duration_ms)}</span>
                   <span>📝 {rec.step_count} 步</span>
+                  {rec.nodes && rec.nodes.length > 0 && <span>🌳 {rec.nodes.length} 节点</span>}
                 </div>
                 <div className="rec-card-actions">
-                  <button
-                    className="rec-btn rec-btn-play"
-                    onClick={() => handlePlay(rec)}
-                    disabled={isPlaying || recordingState !== 'idle'}
-                  >
+                  <button className="rec-btn rec-btn-edit" onClick={() => { setEditingRec(rec); setSelectedNode(null); }}>
+                    ✏️ 编辑
+                  </button>
+                  <button className="rec-btn rec-btn-play" onClick={() => handlePlay(rec)} disabled={isPlaying || recordingState !== 'idle'}>
                     {isPlaying ? '⏳ 回放中...' : '▶ 回放'}
                   </button>
-                  <button
-                    className="rec-btn rec-btn-delete"
-                    onClick={() => handleDelete(rec.id)}
-                  >
-                    🗑️
-                  </button>
+                  <button className="rec-btn rec-btn-delete" onClick={() => handleDelete(rec.id)}>🗑️</button>
                 </div>
               </div>
             ))}

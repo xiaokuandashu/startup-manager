@@ -6,6 +6,7 @@ use tauri::Manager;
 use tauri::Emitter;
 
 mod ai_engine;
+mod recorder;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
@@ -657,6 +658,64 @@ async fn ai_cloud_parse(input: String) -> Result<String, String> {
     result
 }
 
+// ======== 录制引擎 Tauri commands ========
+
+#[tauri::command]
+fn recording_start() -> Result<String, String> {
+    recorder::start_recording()?;
+    Ok("recording".into())
+}
+
+#[tauri::command]
+fn recording_stop() -> Result<Vec<recorder::RecordedStep>, String> {
+    recorder::stop_recording()
+}
+
+#[tauri::command]
+fn recording_pause() -> Result<String, String> {
+    recorder::toggle_pause()
+}
+
+#[tauri::command]
+fn recording_status() -> recorder::RecordingStatus {
+    recorder::get_status()
+}
+
+#[tauri::command]
+fn recording_play(steps: Vec<recorder::RecordedStep>) -> Result<(), String> {
+    recorder::play_recording(steps)
+}
+
+#[tauri::command]
+fn recording_save(name: String, steps: Vec<recorder::RecordedStep>, duration_ms: u64) -> Result<String, String> {
+    let recording = recorder::Recording {
+        id: format!("{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()),
+        name,
+        created_at: {
+            let now = std::time::SystemTime::now();
+            let since = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+            format!("{}", since.as_secs())
+        },
+        duration_ms,
+        step_count: steps.len(),
+        steps,
+    };
+    recorder::save_recording_to_file(&recording)
+}
+
+#[tauri::command]
+fn recording_list() -> Result<Vec<recorder::Recording>, String> {
+    recorder::list_recordings()
+}
+
+#[tauri::command]
+fn recording_delete(id: String) -> Result<(), String> {
+    recorder::delete_recording(&id)
+}
+
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -748,7 +807,15 @@ pub fn run() {
             download_update,
             install_update,
             ai_parse_intent,
-            ai_cloud_parse
+            ai_cloud_parse,
+            recording_start,
+            recording_stop,
+            recording_pause,
+            recording_status,
+            recording_play,
+            recording_save,
+            recording_list,
+            recording_delete
         ]);
 
     // Windows 系统托盘 + 窗口关闭拦截

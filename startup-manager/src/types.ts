@@ -4,8 +4,8 @@ export interface StartupTask {
   path: string;
   icon?: string;           // Base64 data URI 应用图标
   enabled: boolean;
-  type: 'application' | 'script' | 'service';
-  taskType: string;       // 打开应用 / 打开执行文件 / 路径打开应用
+  type: 'application' | 'script' | 'service' | 'recording';
+  taskType: string;       // 打开应用 / 打开执行文件 / 路径打开应用 / 录制回放
   timeType: string;       // 每日循环 / 计算机启动时 / 一次 / 每周 / 每月
   executeTime: string;    // 执行时间 e.g. "8:12:00"
   timeUntilExec: string;  // 距离任务开始 e.g. "9小时3分12秒后执行"
@@ -32,4 +32,4 @@ export interface LogEntry {
   icon?: string;
 }
 
-export type PageType = 'home' | 'log' | 'settings' | 'ai';
+export type PageType = 'home' | 'log' | 'settings' | 'ai' | 'recording';

@@ -62,6 +62,7 @@ const Header: React.FC<HeaderProps> = ({
   const pages: { key: PageType; label: string }[] = [
     { key: 'home', label: t('home', lang) },
     { key: 'ai', label: '🤖 AI' },
+    { key: 'recording', label: '🎬 录制' },
     { key: 'log', label: t('logs', lang) },
   ];
 

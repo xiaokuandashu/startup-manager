@@ -11,7 +11,7 @@
   --text-secondary: #666;
   --text-muted: #999;
   --border-color: #e8e8e8;
-  --accent-blue: #42A5F5;
+  --accent-blue: #0091FF;
   --accent-orange: #F59E0B;
   --accent-red: #EF4444;
   --accent-green: #22C55E;
@@ -1652,11 +1652,11 @@ body {
 .update-later-btn:hover { background: #e5e7eb; }
 .update-download-btn {
   padding: 10px 24px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, #0091FF, #007acc);
   color: white; border: none; border-radius: 8px;
   font-size: 14px; font-weight: 600; cursor: pointer;
 }
-.update-download-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+.update-download-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,145,255,0.3); }
 .update-download-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 /* Download Progress */
@@ -1676,7 +1676,7 @@ body {
 }
 .download-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  background: linear-gradient(90deg, #0091FF, #007acc);
   border-radius: 4px;
   transition: width 0.3s ease;
 }

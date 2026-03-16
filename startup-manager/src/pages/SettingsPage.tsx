@@ -349,34 +349,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           </div>
           {user && (
             <div style={{ marginTop: 10 }}>
-              <button className="btn-check-update" style={{ fontSize: 13, padding: '6px 14px' }} onClick={() => { setShowChangePwd(!showChangePwd); setPwdMsg(''); setOldPwd(''); setNewPwd(''); }}>
-                {lang === 'zh' ? (showChangePwd ? '收起' : '修改密码') : (showChangePwd ? 'Collapse' : 'Change Password')}
+              <button className="btn-check-update" style={{ fontSize: 13, padding: '6px 14px' }} onClick={() => { setShowChangePwd(true); setPwdMsg(''); setOldPwd(''); setNewPwd(''); }}>
+                {lang === 'zh' ? '修改密码' : 'Change Password'}
               </button>
-              {showChangePwd && (
-                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <input type="password" placeholder={lang === 'zh' ? '原密码（首次设置可留空）' : 'Old password (leave empty if first time)'} value={oldPwd} onChange={e => setOldPwd(e.target.value)}
-                    style={{ padding: '8px 12px', border: '1px solid var(--border-color, #e2e8f0)', borderRadius: 8, fontSize: 13, background: 'var(--card-bg, #fff)', color: 'var(--text-color, #333)' }} />
-                  <input type="password" placeholder={lang === 'zh' ? '新密码（至少6位）' : 'New password (min 6 chars)'} value={newPwd} onChange={e => setNewPwd(e.target.value)}
-                    style={{ padding: '8px 12px', border: '1px solid var(--border-color, #e2e8f0)', borderRadius: 8, fontSize: 13, background: 'var(--card-bg, #fff)', color: 'var(--text-color, #333)' }} />
-                  <button className="btn-check-update" style={{ fontSize: 13, padding: '6px 14px', alignSelf: 'flex-start' }} onClick={async () => {
-                    if (!newPwd || newPwd.length < 6) { setPwdMsg(lang === 'zh' ? '新密码至少6位' : 'Min 6 chars'); return; }
-                    try {
-                      const token = localStorage.getItem('auth_token');
-                      const resp = await fetch('https://bt.aacc.fun:8888/api/auth/change-password', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ oldPassword: oldPwd || undefined, newPassword: newPwd }),
-                      });
-                      const data = await resp.json();
-                      if (!resp.ok) { setPwdMsg(data.error); return; }
-                      setPwdMsg(lang === 'zh' ? '✅ 密码修改成功' : '✅ Password changed');
-                      setOldPwd(''); setNewPwd('');
-                      setTimeout(() => { setPwdMsg(''); setShowChangePwd(false); }, 2000);
-                    } catch { setPwdMsg(lang === 'zh' ? '网络错误' : 'Network error'); }
-                  }}>{lang === 'zh' ? '保存密码' : 'Save Password'}</button>
-                  {pwdMsg && <p style={{ fontSize: 12, color: pwdMsg.startsWith('✅') ? '#22c55e' : '#ef4444', margin: 0 }}>{pwdMsg}</p>}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -418,6 +393,62 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           type={agreementType}
           lang={lang}
         />
+      )}
+      {/* 修改密码弹窗 */}
+      {showChangePwd && (
+        <div className="modal-overlay" onClick={() => setShowChangePwd(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '90vw' }}>
+            <div className="modal-header">
+              <h2>{lang === 'zh' ? '修改密码' : 'Change Password'}</h2>
+              <button className="modal-close" onClick={() => setShowChangePwd(false)}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  {lang === 'zh' ? '原密码（首次设置可留空）' : 'Current password (leave empty if first time)'}
+                </label>
+                <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)}
+                  placeholder={lang === 'zh' ? '请输入原密码' : 'Enter current password'}
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-color)', borderRadius: 8, fontSize: 13, background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  {lang === 'zh' ? '新密码（至少6位）' : 'New password (min 6 characters)'}
+                </label>
+                <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                  placeholder={lang === 'zh' ? '请输入新密码' : 'Enter new password'}
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-color)', borderRadius: 8, fontSize: 13, background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              {pwdMsg && <p style={{ fontSize: 13, color: pwdMsg.startsWith('✅') ? '#22c55e' : '#ef4444', margin: 0 }}>{pwdMsg}</p>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+                <button onClick={() => setShowChangePwd(false)}
+                  style={{ padding: '8px 20px', border: '1px solid var(--border-color)', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
+                  {lang === 'zh' ? '取消' : 'Cancel'}
+                </button>
+                <button className="btn-check-update" style={{ fontSize: 13, padding: '8px 20px', marginTop: 0 }} onClick={async () => {
+                  if (!newPwd || newPwd.length < 6) { setPwdMsg(lang === 'zh' ? '新密码至少6位' : 'Min 6 chars'); return; }
+                  try {
+                    const token = localStorage.getItem('auth_token');
+                    const resp = await fetch('https://bt.aacc.fun:8888/api/auth/change-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ oldPassword: oldPwd || undefined, newPassword: newPwd }),
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) { setPwdMsg(data.error); return; }
+                    setPwdMsg(lang === 'zh' ? '✅ 密码修改成功' : '✅ Password changed');
+                    setOldPwd(''); setNewPwd('');
+                    setTimeout(() => { setPwdMsg(''); setShowChangePwd(false); }, 2000);
+                  } catch { setPwdMsg(lang === 'zh' ? '网络错误' : 'Network error'); }
+                }}>{lang === 'zh' ? '保存' : 'Save'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

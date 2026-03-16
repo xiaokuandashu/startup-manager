@@ -18,7 +18,7 @@ interface Plan {
   is_limited: number;
 }
 
-const API_BASE = 'http://aacc.fun:3001/api';
+const API_BASE = 'https://bt.aacc.fun:8888/api';
 
 const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated, lang = 'zh' }) => {
   const [activeTab, setActiveTab] = useState<'purchase' | 'activate'>('purchase');

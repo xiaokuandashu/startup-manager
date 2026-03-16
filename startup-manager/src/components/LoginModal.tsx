@@ -174,13 +174,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
           {(tab === 'code' || tab === 'password') && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
               <button
-                style={{ flex: 1, padding: '8px 0', border: 'none', borderBottom: tab === 'code' ? '2px solid #4F46E5' : '2px solid transparent', background: 'none', color: tab === 'code' ? '#4F46E5' : '#999', cursor: 'pointer', fontWeight: tab === 'code' ? 600 : 400, fontSize: 13 }}
+                style={{ flex: 1, padding: '8px 0', border: 'none', borderBottom: tab === 'code' ? '2px solid #0091FF' : '2px solid transparent', background: 'none', color: tab === 'code' ? '#0091FF' : '#ccc', cursor: 'pointer', fontWeight: tab === 'code' ? 600 : 400, fontSize: 13 }}
                 onClick={() => { setTab('code'); setError(''); }}
               >
                 {isZh ? '验证码登录' : 'Code Login'}
               </button>
               <button
-                style={{ flex: 1, padding: '8px 0', border: 'none', borderBottom: tab === 'password' ? '2px solid #4F46E5' : '2px solid transparent', background: 'none', color: tab === 'password' ? '#4F46E5' : '#999', cursor: 'pointer', fontWeight: tab === 'password' ? 600 : 400, fontSize: 13 }}
+                style={{ flex: 1, padding: '8px 0', border: 'none', borderBottom: tab === 'password' ? '2px solid #0091FF' : '2px solid transparent', background: 'none', color: tab === 'password' ? '#0091FF' : '#ccc', cursor: 'pointer', fontWeight: tab === 'password' ? 600 : 400, fontSize: 13 }}
                 onClick={() => { setTab('password'); setError(''); }}
               >
                 {isZh ? '密码登录' : 'Password Login'}
@@ -263,7 +263,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
                     setAgreementContent(isZh ? data.content_zh : data.content_en);
                     setShowAgreement('user');
                   } catch { setAgreementContent(isZh ? '加载失败' : 'Failed to load'); setShowAgreement('user'); }
-                }} style={{ color: '#4F46E5', textDecoration: 'underline', cursor: 'pointer' }}>
+                }} style={{ color: '#0091FF', textDecoration: 'underline', cursor: 'pointer' }}>
                   {isZh ? '《用户协议》' : 'Terms of Service'}
                 </a>
                 {isZh ? '和' : ' and '}
@@ -275,7 +275,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
                     setAgreementContent(isZh ? data.content_zh : data.content_en);
                     setShowAgreement('privacy');
                   } catch { setAgreementContent(isZh ? '加载失败' : 'Failed to load'); setShowAgreement('privacy'); }
-                }} style={{ color: '#4F46E5', textDecoration: 'underline', cursor: 'pointer' }}>
+                }} style={{ color: '#0091FF', textDecoration: 'underline', cursor: 'pointer' }}>
                   {isZh ? '《隐私政策》' : 'Privacy Policy'}
                 </a>
               </span>
@@ -303,7 +303,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 12 }}>
             {(tab === 'code' || tab === 'password') && (
               <>
-                <button style={{ background: 'none', border: 'none', color: '#4F46E5', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                <button style={{ background: 'none', border: 'none', color: '#0091FF', cursor: 'pointer', fontSize: 12, padding: 0 }}
                   onClick={() => { setTab('register'); setError(''); }}>
                   {isZh ? '注册新账号' : 'Register'}
                 </button>
@@ -314,7 +314,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               </>
             )}
             {(tab === 'register' || tab === 'forgot') && (
-              <button style={{ background: 'none', border: 'none', color: '#4F46E5', cursor: 'pointer', fontSize: 12, padding: 0 }}
+              <button style={{ background: 'none', border: 'none', color: '#0091FF', cursor: 'pointer', fontSize: 12, padding: 0 }}
                 onClick={() => { setTab('code'); setError(''); setSuccessMsg(''); }}>
                 {isZh ? '← 返回登录' : '← Back to login'}
               </button>

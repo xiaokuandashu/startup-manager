@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PageType } from '../types';
+import { PageType, ToolTab } from '../types';
 import UserDropdown from './UserDropdown';
 import AvatarCropper from './AvatarCropper';
 import { t, Language } from '../i18n';
@@ -23,6 +23,13 @@ interface HeaderProps {
   user: UserInfo | null;
   onLogout: () => void;
   lang: Language;
+  // 工具标签页
+  toolTabs: ToolTab[];
+  activeTabId: string | null;
+  onTabClick: (tabId: string) => void;
+  onTabClose: (tabId: string) => void;
+  onTabLock: (tabId: string) => void;
+  onTabDragEnd: (fromId: string, toId: string) => void;
 }
 
 const AVATAR_KEY = 'user_avatar';
@@ -30,13 +37,14 @@ const AVATAR_KEY = 'user_avatar';
 const Header: React.FC<HeaderProps> = ({
   currentPage, onPageChange, searchQuery, onSearchChange,
   onLogin, onVip, theme, onToggleTheme, user, onLogout, lang,
+  toolTabs, activeTabId, onTabClick, onTabClose, onTabLock, onTabDragEnd,
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAvatarCropper, setShowAvatarCropper] = useState(false);
   const [customAvatar, setCustomAvatar] = useState<string | null>(null);
+  const [dragTabId, setDragTabId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // 加载自定义头像
   useEffect(() => {
     const saved = localStorage.getItem(AVATAR_KEY);
     if (saved) setCustomAvatar(saved);
@@ -59,42 +67,77 @@ const Header: React.FC<HeaderProps> = ({
 
   const avatarSrc = customAvatar || '/icon/icon_touxiangmoren.svg';
 
-  const pages: { key: PageType; label: string }[] = [
-    { key: 'home', label: t('home', lang) },
-    { key: 'tools', label: '🔧 工具' },
-  ];
-
   return (
     <>
       <header className="app-header">
         <div className="header-left">
-          {pages.map(p => (
-            <button
-              key={p.key}
-              className={`page-tab ${currentPage === p.key ? 'active' : ''}`}
-              onClick={() => onPageChange(p.key)}
+          {/* 首页 tab */}
+          <button
+            className={`page-tab ${currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => onPageChange('home')}
+          >
+            {t('home', lang)}
+          </button>
+
+          {/* 工具 tab */}
+          <button
+            className={`page-tab ${currentPage === 'tools' && !activeTabId ? 'active' : ''}`}
+            onClick={() => { onPageChange('tools'); }}
+          >
+            🔧 工具
+          </button>
+
+          {/* 已打开的工具标签（浏览器风格，紧跟在工具后面） */}
+          {toolTabs.map(tab => (
+            <div
+              key={tab.id}
+              className={`page-tab tool-tab-inline ${activeTabId === tab.id ? 'active' : ''} ${dragTabId === tab.id ? 'dragging' : ''}`}
+              draggable
+              onClick={() => onTabClick(tab.id)}
+              onDragStart={() => setDragTabId(tab.id)}
+              onDragOver={e => e.preventDefault()}
+              onDrop={() => {
+                if (dragTabId && dragTabId !== tab.id) {
+                  onTabDragEnd(dragTabId, tab.id);
+                }
+                setDragTabId(null);
+              }}
+              onDragEnd={() => setDragTabId(null)}
             >
-              {p.label}
-            </button>
+              <span className="tool-tab-inline-icon">{tab.icon}</span>
+              <span className="tool-tab-inline-title">{tab.title}</span>
+              <button
+                className={`tool-tab-inline-pin ${tab.locked ? 'locked' : ''}`}
+                onClick={e => { e.stopPropagation(); onTabLock(tab.id); }}
+                title={tab.locked ? '取消锁定' : '锁定'}
+              >
+                {tab.locked ? '📌' : '📍'}
+              </button>
+              {!tab.locked && (
+                <button
+                  className="tool-tab-inline-close"
+                  onClick={e => { e.stopPropagation(); onTabClose(tab.id); }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           ))}
         </div>
 
-        <div className="header-center">
-          <div className="search-bar">
+        <div className="header-right">
+          {/* 搜索栏（缩短，放在VIP前面） */}
+          <div className="search-bar-compact">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
             <input
               placeholder={t('search', lang)}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
             />
-            <span className="search-icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
-              </svg>
-            </span>
           </div>
-        </div>
 
-        <div className="header-right">
           <button className="vip-badge" onClick={onVip}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>

@@ -54,7 +54,6 @@ const App: React.FC = () => {
   // 工具标签页状态
   const [toolTabs, setToolTabs] = useState<ToolTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [dragTabId, setDragTabId] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
 
@@ -146,7 +145,7 @@ const App: React.FC = () => {
       {currentPage !== 'settings' && (
         <Header
           currentPage={currentPage}
-          onPageChange={setCurrentPage}
+          onPageChange={(page) => { setCurrentPage(page); if (page === 'tools') setActiveTabId(null); }}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onLogin={() => setShowLogin(true)}
@@ -156,68 +155,33 @@ const App: React.FC = () => {
           user={user}
           onLogout={handleLogout}
           lang={lang}
+          toolTabs={toolTabs}
+          activeTabId={activeTabId}
+          onTabClick={(tabId) => { setActiveTabId(tabId); setCurrentPage('tools'); }}
+          onTabClose={(tabId) => {
+            setToolTabs(prev => prev.filter(t => t.id !== tabId));
+            if (activeTabId === tabId) {
+              const remaining = toolTabs.filter(t => t.id !== tabId);
+              setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+              if (remaining.length === 0) setCurrentPage('tools');
+            }
+          }}
+          onTabLock={(tabId) => {
+            setToolTabs(prev => prev.map(t => t.id === tabId ? { ...t, locked: !t.locked } : t));
+          }}
+          onTabDragEnd={(fromId, toId) => {
+            setToolTabs(prev => {
+              const arr = [...prev];
+              const fromIdx = arr.findIndex(t => t.id === fromId);
+              const toIdx = arr.findIndex(t => t.id === toId);
+              if (fromIdx >= 0 && toIdx >= 0) {
+                const [moved] = arr.splice(fromIdx, 1);
+                arr.splice(toIdx, 0, moved);
+              }
+              return arr;
+            });
+          }}
         />
-      )}
-
-      {/* 工具标签栏 */}
-      {toolTabs.length > 0 && (
-        <div className="tool-tab-bar">
-          {toolTabs.map(tab => (
-            <div
-              key={tab.id}
-              className={`tool-tab ${activeTabId === tab.id ? 'active' : ''} ${dragTabId === tab.id ? 'dragging' : ''}`}
-              draggable
-              onClick={() => { setActiveTabId(tab.id); setCurrentPage('tools'); }}
-              onDragStart={() => setDragTabId(tab.id)}
-              onDragOver={e => { e.preventDefault(); }}
-              onDrop={() => {
-                if (dragTabId && dragTabId !== tab.id) {
-                  setToolTabs(prev => {
-                    const arr = [...prev];
-                    const fromIdx = arr.findIndex(t => t.id === dragTabId);
-                    const toIdx = arr.findIndex(t => t.id === tab.id);
-                    if (fromIdx >= 0 && toIdx >= 0) {
-                      const [moved] = arr.splice(fromIdx, 1);
-                      arr.splice(toIdx, 0, moved);
-                    }
-                    return arr;
-                  });
-                }
-                setDragTabId(null);
-              }}
-              onDragEnd={() => setDragTabId(null)}
-            >
-              <span className="tool-tab-icon">{tab.icon}</span>
-              <span className="tool-tab-title">{tab.title}</span>
-              <button
-                className={`tool-tab-lock ${tab.locked ? 'locked' : ''}`}
-                onClick={e => {
-                  e.stopPropagation();
-                  setToolTabs(prev => prev.map(t => t.id === tab.id ? { ...t, locked: !t.locked } : t));
-                }}
-                title={tab.locked ? '取消锁定' : '锁定标签'}
-              >
-                {tab.locked ? '📌' : '📍'}
-              </button>
-              {!tab.locked && (
-                <button
-                  className="tool-tab-close"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setToolTabs(prev => prev.filter(t => t.id !== tab.id));
-                    if (activeTabId === tab.id) {
-                      const remaining = toolTabs.filter(t => t.id !== tab.id);
-                      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
-                      if (remaining.length === 0) setCurrentPage('tools');
-                    }
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
       )}
 
       <main className="app-main">

@@ -5,6 +5,8 @@ use std::process::Command;
 use tauri::Manager;
 use tauri::Emitter;
 
+mod ai_engine;
+
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
     pub name: String,
@@ -576,6 +578,85 @@ async fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), St
     Ok(())
 }
 
+/// AI 局部解析 — 本地规则引擎
+#[tauri::command]
+fn ai_parse_intent(input: String) -> ai_engine::AiResponse {
+    let apps = get_installed_apps();
+    let app_infos: Vec<ai_engine::AppInfo> = apps.iter().map(|a| ai_engine::AppInfo {
+        name: a.name.clone(),
+        name_lower: a.name.to_lowercase(),
+        path: a.path.clone(),
+    }).collect();
+    ai_engine::parse_intent(&input, &app_infos)
+}
+
+/// AI 云端解析 — DeepSeek API
+#[tauri::command]
+async fn ai_cloud_parse(input: String) -> Result<String, String> {
+    let api_key = "sk-3d0295d2c9084d8ba7681135c586c505";
+    let system_prompt = r#"你是自启精灵的AI助手，帮用户创建桌面自动化任务。根据用户输入，返回JSON格式的任务。
+返回格式：{"message":"给用户的回复","response_type":"task_created","tasks":[{"task_name":"任务名","task_type":"application/script/path","path":"应用或脚本路径","schedule_type":"startup/once/daily/weekly/monthly","schedule_time":"HH:MM","schedule_days":[],"enabled":true,"confidence":0.9}]}
+如果用户的问题与任务无关,返回：{"message":"你的回答","response_type":"info","tasks":[]}
+只返回JSON,不要其他内容。"#;
+
+    let body = serde_json::json!({
+        "model": "deepseek-chat",
+        "messages": [
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": input }
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1024
+    });
+
+    let body_str = body.to_string();
+
+    let result = tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new("curl")
+                .args(["-s", "-X", "POST",
+                    "https://api.deepseek.com/chat/completions",
+                    "-H", "Content-Type: application/json",
+                    &format!("-H"), &format!("Authorization: Bearer {}", api_key),
+                    "-d", &body_str,
+                    "--connect-timeout", "15",
+                    "--max-time", "30",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        };
+        #[cfg(not(target_os = "windows"))]
+        let output = Command::new("curl")
+            .args(["-s", "-X", "POST",
+                "https://api.deepseek.com/chat/completions",
+                "-H", "Content-Type: application/json",
+                "-H", &format!("Authorization: Bearer {}", api_key),
+                "-d", &body_str,
+                "--connect-timeout", "15",
+                "--max-time", "30",
+            ])
+            .output();
+
+        let output = output.map_err(|e| format!("API 调用失败: {}", e))?;
+        if output.status.success() {
+            let resp = String::from_utf8_lossy(&output.stdout).to_string();
+            // 从 DeepSeek 响应中提取 content
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&resp) {
+                if let Some(content) = json["choices"][0]["message"]["content"].as_str() {
+                    return Ok(content.to_string());
+                }
+            }
+            Ok(resp)
+        } else {
+            Err(format!("API 请求失败: {}", String::from_utf8_lossy(&output.stderr)))
+        }
+    }).await.map_err(|e| format!("任务失败: {}", e))?;
+    result
+}
+
 /// 获取用户主目录
 fn dirs_home() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -665,7 +746,9 @@ pub fn run() {
             set_window_theme,
             check_update,
             download_update,
-            install_update
+            install_update,
+            ai_parse_intent,
+            ai_cloud_parse
         ]);
 
     // Windows 系统托盘 + 窗口关闭拦截

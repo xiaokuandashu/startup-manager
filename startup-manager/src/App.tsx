@@ -5,6 +5,7 @@ import Header from './components/Header';
 import HomePage from './pages/HomePage';
 import LogPage from './pages/LogPage';
 import SettingsPage from './pages/SettingsPage';
+import AiAssistantPage from './pages/AiAssistantPage';
 import LoginModal from './components/LoginModal';
 import VipModal from './components/VipModal';
 import UpdateChecker from './components/UpdateChecker';
@@ -153,6 +154,7 @@ const App: React.FC = () => {
           />
         )}
         {currentPage === 'log' && <LogPage searchQuery={searchQuery} lang={lang} />}
+        {currentPage === 'ai' && <AiAssistantPage lang={lang} />}
         {currentPage === 'settings' && (
           <SettingsPage
             onBack={() => setCurrentPage('home')}

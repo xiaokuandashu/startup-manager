@@ -2965,6 +2965,76 @@ body {
 .mkt-empty-icon { font-size: 48px; opacity: 0.4; margin-bottom: 12px; }
 .mkt-empty-text { font-size: 13px; color: var(--text-secondary, #9ca3af); }
 
+/* Header right */
+.mkt-header-right { display: flex; align-items: center; gap: 10px; }
+.mkt-credits { padding: 4px 12px; background: linear-gradient(135deg, #f59e0b, #f97316); color: #fff; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.mkt-btn-my, .mkt-btn-pub { padding: 6px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-card, #fff); color: var(--text-primary); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.mkt-btn-my:hover, .mkt-btn-pub:hover { border-color: #0091FF; color: #0091FF; }
+.mkt-btn-pub { background: #0091FF; color: #fff; border-color: #0091FF; }
+.mkt-btn-pub:hover { background: #007acc; }
+
+/* Toolbar */
+.mkt-toolbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+.mkt-sort-search { display: flex; gap: 8px; align-items: center; }
+.mkt-sort-select { padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); font-size: 12px; color: var(--text-primary); }
+.mkt-card { cursor: pointer; }
+.mkt-card-safety { font-size: 14px; }
+.mkt-card-cost { font-size: 11px; color: #f59e0b; font-weight: 600; }
+
+/* Publish Dialog */
+.mkt-publish-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.mkt-publish-dialog { background: var(--bg-card, #fff); border-radius: 16px; padding: 24px; width: 420px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.mkt-publish-dialog h4 { margin: 0 0 16px 0; font-size: 16px; }
+.mkt-publish-dialog label { display: block; font-size: 12px; color: var(--text-secondary); margin: 10px 0 4px; }
+.mkt-publish-dialog input, .mkt-publish-dialog textarea, .mkt-publish-dialog select { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary, #f9fafb); font-size: 13px; color: var(--text-primary); box-sizing: border-box; }
+.mkt-publish-dialog textarea { resize: vertical; }
+.mkt-publish-note { font-size: 11px; color: var(--text-secondary); margin: 12px 0; }
+.mkt-publish-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.mkt-btn-cancel { padding: 8px 20px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+.mkt-btn-publish { padding: 8px 20px; border: none; border-radius: 8px; background: #0091FF; color: #fff; font-weight: 600; cursor: pointer; }
+.mkt-btn-publish:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Detail */
+.mkt-back-btn { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; margin-right: 12px; font-size: 13px; }
+.mkt-detail { display: flex; flex-direction: column; gap: 20px; }
+.mkt-detail-main { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
+.mkt-detail-info { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+.mkt-detail-desc { font-size: 14px; line-height: 1.6; color: var(--text-primary); margin-bottom: 12px; }
+.mkt-detail-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.mkt-btn-big { padding: 10px 24px; font-size: 14px; font-weight: 600; }
+
+/* Comments */
+.mkt-comments { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
+.mkt-comments h4 { margin: 0 0 14px 0; font-size: 15px; }
+.mkt-comment-form { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.mkt-comment-rating { display: flex; gap: 2px; }
+.mkt-star { font-size: 18px; color: #d1d5db; cursor: pointer; transition: color 0.15s; }
+.mkt-star.active { color: #f59e0b; }
+.mkt-comment-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 13px; background: var(--bg-primary); color: var(--text-primary); }
+.mkt-comment-btn { padding: 8px 16px; background: #0091FF; color: #fff; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.mkt-comment-btn:disabled { opacity: 0.5; }
+.mkt-comment-item { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.mkt-comment-item:last-child { border-bottom: none; }
+.mkt-comment-header { display: flex; gap: 10px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.mkt-comment-stars { color: #f59e0b; letter-spacing: 1px; }
+.mkt-comment-date { margin-left: auto; }
+.mkt-comment-content { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+
+/* My tasks */
+.mkt-my-list { display: flex; flex-direction: column; gap: 8px; }
+.mkt-my-item { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+.mkt-my-name { font-size: 14px; font-weight: 500; }
+.mkt-my-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); }
+.mkt-status-approved { color: #10b981; }
+.mkt-status-pending { color: #f59e0b; }
+.mkt-status-rejected { color: #ef4444; }
+
+/* Pagination */
+.mkt-pagination { display: flex; justify-content: center; align-items: center; gap: 14px; padding: 16px 0; }
+.mkt-pagination button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); cursor: pointer; font-size: 12px; color: var(--text-primary); }
+.mkt-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.mkt-pagination span { font-size: 12px; color: var(--text-secondary); }
+
 /* ========================================
    Tools Page (Card Launcher)
    ======================================== */

@@ -97,7 +97,25 @@ const VipModal: React.FC<VipModalProps> = ({ isOpen, onClose, token, onActivated
         setActivateError(data.error || t('activationFailed', lang));
         return;
       }
-      setActivateMsg(`${t('activationSuccess', lang)} ${data.expireDate}`);
+
+      // Phase E: VIP 激活时自动发放积分
+      let creditMsg = '';
+      try {
+        const userId = localStorage.getItem('user_id') || '';
+        if (userId && data.planDuration) {
+          const creditResp = await fetch(`${API_BASE}/credits/vip-bonus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ userId, planDuration: data.planDuration }),
+          });
+          const creditData = await creditResp.json();
+          if (creditData.success) {
+            creditMsg = `\n🎁 已赠送 ${creditData.credited} 积分！`;
+          }
+        }
+      } catch { /* ignore credit error */ }
+
+      setActivateMsg(`${t('activationSuccess', lang)} ${data.expireDate}${creditMsg}`);
       onActivated(data.expireDate);
     } catch {
       setActivateError(t('networkError', lang));

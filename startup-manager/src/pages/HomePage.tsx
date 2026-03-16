@@ -269,6 +269,20 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
             markExecuted(task.id);
 
             const success = await executeLaunchApp(task.path);
+
+            // Phase B: 执行绑定的录制回放
+            if (success && task.recordingId) {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                // 等待应用启动
+                await new Promise(r => setTimeout(r, 3000));
+                await invoke('recording_play', { name: task.recordingName || task.recordingId });
+                console.log(`[录制回放] ${task.recordingName || task.recordingId} 执行完成`);
+              } catch (recErr) {
+                console.error(`[录制回放] 失败:`, recErr);
+              }
+            }
+
             const statusText = success ? '今日执行成功' : '今日执行失败';
 
             // 写入日志

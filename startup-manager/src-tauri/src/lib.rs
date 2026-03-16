@@ -719,11 +719,16 @@ fn recording_delete(id: String) -> Result<(), String> {
     recorder::delete_recording(&id)
 }
 
-// ======== 本地模型 Tauri commands ========
+// ======== 本地推理引擎 Tauri commands ========
 
 #[tauri::command]
-async fn ollama_status() -> Result<bool, String> {
-    local_model::check_ollama_status().await
+async fn engine_status() -> local_model::EngineStatus {
+    local_model::get_engine_status().await
+}
+
+#[tauri::command]
+async fn engine_download() -> Result<String, String> {
+    local_model::download_engine().await
 }
 
 #[tauri::command]
@@ -733,22 +738,27 @@ async fn model_list() -> Result<Vec<local_model::LocalModel>, String> {
 
 #[tauri::command]
 async fn model_pull(model_id: String) -> Result<String, String> {
-    local_model::pull_model(&model_id).await
+    local_model::download_model(&model_id).await
 }
 
 #[tauri::command]
-async fn model_delete(model_id: String) -> Result<(), String> {
-    local_model::delete_model(&model_id).await
+fn model_delete(model_id: String) -> Result<(), String> {
+    local_model::delete_model(&model_id)
 }
 
 #[tauri::command]
-async fn local_model_infer(model_id: String, input: String) -> Result<String, String> {
-    local_model::local_model_parse(&model_id, &input).await
+fn engine_start(model_id: String) -> Result<(), String> {
+    local_model::start_engine(&model_id)
 }
 
 #[tauri::command]
-fn ollama_start() -> Result<(), String> {
-    local_model::try_start_ollama()
+fn engine_stop() {
+    local_model::stop_engine()
+}
+
+#[tauri::command]
+async fn local_model_infer(input: String) -> Result<String, String> {
+    local_model::local_infer(&input).await
 }
 
 // ======== 辅助功能 Tauri commands ========
@@ -899,12 +909,14 @@ pub fn run() {
             recording_save,
             recording_list,
             recording_delete,
-            ollama_status,
+            engine_status,
+            engine_download,
             model_list,
             model_pull,
             model_delete,
+            engine_start,
+            engine_stop,
             local_model_infer,
-            ollama_start,
             ax_get_window,
             ax_check_permission,
             marketplace_browse,

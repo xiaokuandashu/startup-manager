@@ -128,7 +128,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [showModelPanel, setShowModelPanel] = useState(false);
   const [activeModel, setActiveModel] = useState('rule_engine');
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [ollamaRunning, setOllamaRunning] = useState(false);
+  const [engineRunning, setEngineRunning] = useState(false);
+  const [engineInstalled, setEngineInstalled] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -142,10 +143,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        const list = await invoke<ModelInfo[]>('model_list');
-        setModels(list);
-        const status = await invoke<boolean>('ollama_status');
-        setOllamaRunning(status);
+        const status = await invoke<{ engine_installed: boolean; engine_running: boolean; models: ModelInfo[] }>('engine_status');
+        setModels(status.models);
+        setEngineRunning(status.engine_running);
+        setEngineInstalled(status.engine_installed);
       }
     } catch { /* ignore */ }
   };
@@ -156,10 +157,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('model_pull', { modelId });
+        // 下载完成后自动启动引擎
+        await invoke('engine_start', { modelId });
         await loadModels();
         setMessages(prev => [...prev, {
           id: Date.now(), role: 'ai',
-          content: `✅ 模型下载完成！现在可以切换使用了。`,
+          content: `✅ 模型下载完成并已启动！现在可以切换使用了。`,
           timestamp: Date.now(),
         }]);
       }
@@ -174,12 +177,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     }
   };
 
-  const handleStartOllama = async () => {
+  const handleStartEngine = async (modelId: string) => {
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('ollama_start');
-        setTimeout(loadModels, 3000);
+        await invoke('engine_start', { modelId });
+        setTimeout(loadModels, 2000);
       }
     } catch { /* ignore */ }
   };
@@ -254,12 +257,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
           }
         } else {
-          // 本地 Ollama 模型
+          // 本地内置引擎推理
           setMessages(prev => prev.map(m =>
             m.id === loadingId ? { ...m, content: `🧠 ${activeModel} 本地推理中...` } : m
           ));
           try {
-            const result = await invoke<string>('local_model_infer', { modelId: activeModel, input: text });
+            const result = await invoke<string>('local_model_infer', { input: text });
             const cleanJson = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             response = JSON.parse(cleanJson) as AiResponse;
           } catch (e) {
@@ -355,7 +358,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {/* 顶部模型状态栏 */}
       <div className="ai-model-bar">
         <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
-          <span className={`ai-model-dot ${ollamaRunning ? '' : 'offline'}`} />
+          <span className={`ai-model-dot ${engineRunning ? '' : 'offline'}`} />
           当前模型：{models.find(m => m.id === activeModel)?.name || '📐 本地规则引擎'}
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginLeft: 4 }}>
             <path d="M7 10l5 5 5-5z"/>
@@ -368,8 +371,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         <div className="ai-model-panel">
           <div className="ai-model-panel-title">
             选择 AI 模型
-            <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: ollamaRunning ? '#22c55e' : '#ef4444' }}>
-              {ollamaRunning ? '● Ollama 运行中' : '○ Ollama 未启动'}
+            <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: engineRunning ? '#22c55e' : '#9ca3af' }}>
+              {engineRunning ? '● 引擎运行中' : engineInstalled ? '○ 引擎已安装' : '○ 引擎未安装'}
             </span>
           </div>
           {models.map(model => (
@@ -378,6 +381,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               className={`ai-model-item ${activeModel === model.id ? 'active' : ''}`}
               onClick={() => {
                 if (model.installed) {
+                  if (model.id !== 'rule_engine' && model.id !== 'deepseek_cloud') {
+                    handleStartEngine(model.id);
+                  }
                   setActiveModel(model.id);
                   setShowModelPanel(false);
                 } else if (!model.downloading && downloadingModel !== model.id) {
@@ -406,17 +412,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               </div>
             </div>
           ))}
-          {!ollamaRunning && (
-            <div className="ai-model-panel-note" style={{ cursor: 'pointer' }} onClick={handleStartOllama}>
-              ⚠️ 本地模型需要 <a href="https://ollama.ai" target="_blank" rel="noreferrer" style={{ color: '#0091FF' }}>Ollama</a> 运行。
-              <strong> 点击尝试启动</strong>
-            </div>
-          )}
-          {ollamaRunning && (
-            <div className="ai-model-panel-note">
-              ✅ Ollama 已连接。点击模型可下载或切换。
-            </div>
-          )}
+          <div className="ai-model-panel-note">
+            💡 本地模型内置推理引擎，无需安装外部软件。点击模型即可自动下载并启动。
+          </div>
         </div>
       )}
 

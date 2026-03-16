@@ -15,6 +15,8 @@ export interface StartupTask {
   startupTime?: number;   // ms
   lastRun?: string;
   fileExt?: string;       // .app / .bat / .exe / .sh
+  recordingId?: string;   // 绑定的录制 ID
+  recordingName?: string; // 绑定的录制名称
 }
 
 export interface LogEntry {

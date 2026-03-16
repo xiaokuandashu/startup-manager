@@ -51,7 +51,12 @@ const TaskRow: React.FC<TaskRowProps> = ({
         )}
       </div>
       {/* 任务名称 */}
-      <div className="task-cell task-name-cell" title={task.name}>{task.name}</div>
+      <div className="task-cell task-name-cell" title={task.name}>
+        {task.name}
+        {task.recordingId && (
+          <span className="task-rec-badge" title={`录制: ${task.recordingName || task.recordingId}`}>🎬</span>
+        )}
+      </div>
       {/* 任务类型 */}
       <div className="task-cell" title={task.taskType}>{task.taskType}</div>
       {/* 时间类型 */}

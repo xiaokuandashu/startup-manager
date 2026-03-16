@@ -189,11 +189,16 @@ fn classify_intent(input: &str, installed_apps: &[AppInfo]) -> Intent {
 
 /// 从输入中提取应用名称
 fn extract_app_name(input: &str, keyword: &str, installed_apps: &[AppInfo]) -> String {
-    // 移除关键词后取剩余部分
+    // 移除关键词后取剩余部分（使用 char_indices 安全切片）
     let lower = input.to_lowercase();
     let after = if let Some(pos) = lower.find(keyword) {
         let start = pos + keyword.len();
-        input[start..].trim()
+        // 确保切片位置在字符边界上
+        if start <= input.len() && input.is_char_boundary(start) {
+            input[start..].trim()
+        } else {
+            input
+        }
     } else {
         input
     };
@@ -328,9 +333,9 @@ fn parse_schedule(input: &str) -> Schedule {
     Schedule::default()
 }
 
-/// 提取时间
+/// 提取时间（UTF-8 安全）
 fn extract_time(input: &str) -> Option<String> {
-    // 匹配 "X点" "X点半" "X点Y分"
+    // 匹配 "X点" "X点半" "X点Y分" — 使用 chars 向量避免字节索引
     let chars: Vec<char> = input.chars().collect();
     for i in 0..chars.len() {
         if chars[i] == '点' || chars[i] == '時' {
@@ -343,9 +348,10 @@ fn extract_time(input: &str) -> Option<String> {
             }
             if let Ok(h) = hour.parse::<u32>() {
                 if h <= 23 {
-                    // 往后找分钟
-                    let rest = &input[input.char_indices().nth(i + 1).map(|(idx, _)| idx).unwrap_or(input.len())..];
-                    if rest.starts_with("半") {
+                    // 往后找分钟 — 直接用 chars 切片
+                    let rest_chars: Vec<char> = chars[i + 1..].to_vec();
+                    let rest: String = rest_chars.iter().collect();
+                    if rest.starts_with('半') {
                         return Some(format!("{:02}:30", h));
                     }
                     let mut min_str = String::new();
@@ -364,12 +370,19 @@ fn extract_time(input: &str) -> Option<String> {
         }
     }
 
-    // 匹配 HH:MM
-    for i in 0..input.len().saturating_sub(4) {
-        let slice = &input[i..];
-        if slice.len() >= 5 && slice.as_bytes()[2] == b':' {
-            let h = &slice[0..2];
-            let m = &slice[3..5];
+    // 匹配 HH:MM — 使用 char_indices 安全遍历
+    let bytes = input.as_bytes();
+    for (byte_idx, _) in input.char_indices() {
+        // 只在 ASCII 数字位置开始检查
+        if byte_idx + 5 <= bytes.len()
+            && bytes[byte_idx].is_ascii_digit()
+            && bytes[byte_idx + 1].is_ascii_digit()
+            && bytes[byte_idx + 2] == b':'
+            && bytes[byte_idx + 3].is_ascii_digit()
+            && bytes[byte_idx + 4].is_ascii_digit()
+        {
+            let h = &input[byte_idx..byte_idx + 2];
+            let m = &input[byte_idx + 3..byte_idx + 5];
             if let (Ok(hv), Ok(mv)) = (h.parse::<u32>(), m.parse::<u32>()) {
                 if hv <= 23 && mv < 60 {
                     return Some(format!("{:02}:{:02}", hv, mv));
@@ -381,20 +394,25 @@ fn extract_time(input: &str) -> Option<String> {
     None
 }
 
-/// 提取路径
+/// 提取路径（UTF-8 安全）
 fn extract_path(input: &str) -> String {
-    // macOS/Linux 路径
+    // macOS/Linux 路径 — find() 返回的是字节位置, '/' 是 ASCII 所以安全
     if let Some(start) = input.find('/') {
         let path: String = input[start..].chars().take_while(|c| !c.is_whitespace() && *c != '，' && *c != '。').collect();
         return path;
     }
-    // Windows 路径
-    if let Some(start) = input.find(":\\") {
-        let path_start = if start > 0 { start - 1 } else { start };
+    // Windows 路径 — ":\\" 是 ASCII, 但 start-1 可能在中文字符中间
+    if let Some(colon_pos) = input.find(":\\") {
+        // 往前找盘符字母，使用 char_indices 安全定位
+        let mut path_start = colon_pos;
+        for (byte_idx, ch) in input.char_indices() {
+            if byte_idx == colon_pos { break; }
+            if ch.is_ascii_alphabetic() { path_start = byte_idx; }
+        }
         let path: String = input[path_start..].chars().take_while(|c| !c.is_whitespace() || *c == ' ').collect();
         return path;
     }
-    // ~ 开头
+    // ~ 开头 — '~' 是 ASCII 所以安全
     if let Some(start) = input.find("~/") {
         let path: String = input[start..].chars().take_while(|c| !c.is_whitespace() && *c != '，' && *c != '。').collect();
         return path;
@@ -415,13 +433,16 @@ fn extract_number(input: &str) -> Option<u32> {
     num.parse().ok()
 }
 
-/// 提取关键词后面的内容
+/// 提取关键词后面的内容（UTF-8 安全）
 fn extract_after_keyword(input: &str, keywords: &[&str]) -> String {
     for kw in keywords {
         if let Some(pos) = input.find(kw) {
-            let after = input[pos + kw.len()..].trim();
-            if !after.is_empty() {
-                return after.to_string();
+            let end = pos + kw.len();
+            if end <= input.len() && input.is_char_boundary(end) {
+                let after = input[end..].trim();
+                if !after.is_empty() {
+                    return after.to_string();
+                }
             }
         }
     }

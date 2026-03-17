@@ -12,6 +12,7 @@ interface AiTaskResult {
   schedule_days: number[];
   enabled: boolean;
   confidence: number;
+  recording_name?: string;
 }
 
 interface AiResponse {
@@ -119,6 +120,8 @@ const mapToStartupTask = (task: AiTaskResult): StartupTask => {
     status: 'stopped' as const,
     note: `AI 创建 · ${timeTypeMap[task.schedule_type] || ''}`,
     fileExt: task.path.includes('.') ? '.' + task.path.split('.').pop() : undefined,
+    recordingId: task.recording_name || undefined,
+    recordingName: task.recording_name || undefined,
   };
 };
 
@@ -401,7 +404,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     }
   };
 
-  const handleAddTask = (task: AiTaskResult) => {
+  const handleAddTask = async (task: AiTaskResult) => {
     if (onAddTask) {
       onAddTask(task);
     }
@@ -410,6 +413,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       const existing: StartupTask[] = JSON.parse(localStorage.getItem(TASKS_STORAGE_KEY) || '[]');
       const newTask = mapToStartupTask(task);
+
+      // 自动匹配录制动作
+      if (task.recording_name) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const recList = await invoke<{name:string}[]>('recording_list');
+          const match = recList?.find(r => r.name.includes(task.recording_name!) || task.recording_name!.includes(r.name));
+          if (match) {
+            newTask.recordingId = match.name;
+            newTask.recordingName = match.name;
+          }
+        } catch { /* 无录制列表时忽略 */ }
+      }
+
       existing.push(newTask);
       localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(existing));
 

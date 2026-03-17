@@ -78,7 +78,7 @@ const markExecuted = (taskId: string) => {
 };
 
 // 解析执行时间为 Date 对象
-const parseExecTime = (executeTime: string, timeType: string): Date | null => {
+  const parseExecTime = (executeTime: string, timeType: string): Date | null => {
   if (!executeTime || executeTime === '—' || timeType === '开机启动' || timeType === '计算机启动时') return null;
   try {
     if (executeTime.includes('-')) {
@@ -89,7 +89,15 @@ const parseExecTime = (executeTime: string, timeType: string): Date | null => {
     const now = new Date();
     const target = new Date(now);
     target.setHours(h, m, 0, 0);
-    if (target <= now) target.setDate(target.getDate() + 1);
+    // 对于一次性任务，不自动推到明天 — 允许在5分钟内执行即使时间已过
+    if (timeType === '一次') {
+      // 如果目标时间在5分钟内过去了，仍然执行
+      const diff = now.getTime() - target.getTime();
+      if (diff >= 0 && diff <= 300000) return target; // 5分钟内仍有效
+      if (diff > 300000) return null; // 超过5分钟视为已过期
+    } else {
+      if (target <= now) target.setDate(target.getDate() + 1);
+    }
     return target;
   } catch {
     return null;
@@ -153,9 +161,9 @@ const shouldExecuteNow = (task: StartupTask): boolean => {
   const target = parseExecTime(executeTime, timeType);
   if (!target) return false;
   const now = new Date();
-  // 仅当目标时间已到达（now >= target）且不超过2分钟时执行
+  // 仅当目标时间已到达（now >= target）且不超过5分钟时执行
   const diff = now.getTime() - target.getTime();
-  return diff >= 0 && diff <= 120000;
+  return diff >= 0 && diff <= 300000;
 };
 
 // 执行 Tauri launch_app 命令
@@ -255,7 +263,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
       })));
 
       executionCounter++;
-      if (executionCounter >= 30) {
+      if (executionCounter >= 5) {
         executionCounter = 0;
         const currentTasks = loadTasks();
         for (const task of currentTasks) {

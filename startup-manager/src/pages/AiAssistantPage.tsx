@@ -495,7 +495,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   {model.description}
                   {model.id === 'deepseek_cloud' && (
                     <span style={{ marginLeft: 6, fontSize: 10, color: deepseekUsage.has_custom_key ? '#22c55e' : '#f59e0b' }}>
-                      {deepseekUsage.has_custom_key ? '· 自有密钥 · 无限制' : `· 剩余 ${deepseekUsage.remaining}/${deepseekUsage.daily_limit} 次`}
+                      {deepseekUsage.has_custom_key ? '· 自有密钥 · 无限制' : `· 每日 ${deepseekUsage.daily_limit} 次调用 · 剩余 ${deepseekUsage.remaining} 次`}
                     </span>
                   )}
                 </div>
@@ -712,10 +712,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   setKeyMsg('');
                   try {
                     const token = localStorage.getItem('auth_token');
-                    const res = await fetch('https://bt.aacc.fun:8888/api/auth/deepseek-key', {
+                    const res = await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                      body: JSON.stringify({ deepseek_key: keyInput.trim() }),
+                      body: JSON.stringify({ key: keyInput.trim() }),
                     });
                     if (res.ok) {
                       setKeyMsg('✅ 密钥配置成功');

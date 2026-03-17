@@ -265,17 +265,19 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           try {
             let inferResult: string | null = null;
             let lastError = '';
-            for (let retry = 0; retry < 3; retry++) {
+            const MAX_RETRIES = 5;
+            const RETRY_DELAY = 5000;
+            for (let retry = 0; retry < MAX_RETRIES; retry++) {
               try {
                 inferResult = await invoke<string>('local_model_infer', { input: text });
                 break;
               } catch (e) {
                 lastError = String(e);
-                if (String(e).includes('正在加载') && retry < 2) {
+                if (String(e).includes('正在加载') && retry < MAX_RETRIES - 1) {
                   setMessages(prev => prev.map(m =>
-                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中，3秒后自动重试 (${retry + 1}/3)...` } : m
+                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中，${RETRY_DELAY / 1000}秒后自动重试 (${retry + 1}/${MAX_RETRIES})...` } : m
                   ));
-                  await new Promise(r => setTimeout(r, 3000));
+                  await new Promise(r => setTimeout(r, RETRY_DELAY));
                   continue;
                 }
                 break;

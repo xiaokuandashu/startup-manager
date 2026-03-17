@@ -10,6 +10,7 @@ import QQGroupsPage from './pages/QQGroupsPage';
 import AgreementsPage from './pages/AgreementsPage';
 import MarketplaceAdminPage from './pages/MarketplaceAdminPage';
 import CreditsAdminPage from './pages/CreditsAdminPage';
+import DeepSeekConfigPage from './pages/DeepSeekConfigPage';
 import Layout from './components/Layout';
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
           <Route path="/agreements" element={<AgreementsPage token={token} />} />
           <Route path="/marketplace" element={<MarketplaceAdminPage token={token} />} />
           <Route path="/credits" element={<CreditsAdminPage token={token} />} />
+          <Route path="/deepseek" element={<DeepSeekConfigPage token={token} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

@@ -19,6 +19,7 @@ const navItems = [
   { path: '/updates', label: '更新管理', icon: '🔄' },
   { path: '/qq-groups', label: 'QQ群管理', icon: '💬' },
   { path: '/agreements', label: '协议管理', icon: '📜' },
+  { path: '/deepseek', label: 'DeepSeek 配置', icon: '🤖' },
 ];
 
 export default function Layout({ children, username, onLogout, token, onUsernameChange }: LayoutProps) {

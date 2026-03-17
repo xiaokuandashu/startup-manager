@@ -37,7 +37,7 @@ function autoAudit(taskConfig: string, recordingData: string): { result: string;
 // ======== 发布任务到市场 ========
 router.post('/publish', (req: Request, res: Response) => {
   try {
-    const { userId, name, description, category, tags, recordingData, taskConfig, costCredits } = req.body;
+    const { userId, name, description, category, tags, recordingData, taskConfig, costCredits, platform } = req.body;
     if (!userId || !name) return res.status(400).json({ error: '缺少必要参数' });
 
     const db = getDB();
@@ -48,12 +48,12 @@ router.post('/publish', (req: Request, res: Response) => {
 
     const status = audit.result === 'approved' ? 'approved' : audit.result === 'rejected' ? 'rejected' : 'pending';
 
-    db.prepare(`INSERT INTO marketplace_tasks (id, user_id, name, description, category, tags, recording_data, task_config, cost_credits, safety_level, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO marketplace_tasks (id, user_id, name, description, category, tags, recording_data, task_config, cost_credits, safety_level, status, platform)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       taskId, userId, name, description || '', category || '通用',
       JSON.stringify(tags || []), recordingData || null, taskConfig || null,
       costCredits || 1, audit.result === 'approved' ? 'safe' : audit.result === 'rejected' ? 'dangerous' : 'review',
-      status
+      status, platform || 'all'
     );
 
     // 安全审查记录
@@ -74,7 +74,7 @@ router.post('/publish', (req: Request, res: Response) => {
 router.get('/list', (req: Request, res: Response) => {
   try {
     const db = getDB();
-    const { category, sort, search, page = '1', limit = '20' } = req.query;
+    const { category, sort, search, page = '1', limit = '20', platform } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
     let where = "WHERE status = 'approved'";
@@ -82,13 +82,14 @@ router.get('/list', (req: Request, res: Response) => {
 
     if (category && category !== '全部') { where += ' AND category = ?'; params.push(category); }
     if (search) { where += ' AND (name LIKE ? OR description LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    if (platform && platform !== 'all') { where += " AND (platform = ? OR platform = 'all')"; params.push(platform); }
 
     let orderBy = 'ORDER BY created_at DESC';
     if (sort === 'downloads') orderBy = 'ORDER BY download_count DESC';
     if (sort === 'rating') orderBy = 'ORDER BY rating DESC';
 
     const total = db.prepare(`SELECT COUNT(*) as count FROM marketplace_tasks ${where}`).get(...params) as { count: number };
-    const tasks = db.prepare(`SELECT id, user_id, name, description, category, tags, cost_credits, safety_level, rating, rating_count, download_count, status, created_at
+    const tasks = db.prepare(`SELECT id, user_id, name, description, category, tags, cost_credits, safety_level, rating, rating_count, download_count, status, created_at, platform
       FROM marketplace_tasks ${where} ${orderBy} LIMIT ? OFFSET ?`).all(...params, parseInt(limit as string), offset);
 
     // 附带发布者信息

@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen, Key, Coins } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen, Key } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -52,7 +52,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [hasDeepseekKey, setHasDeepseekKey] = useState(false);
   const [deepseekKeyMasked, setDeepseekKeyMasked] = useState('');
   const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
-  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [showDeepseekModal, setShowDeepseekModal] = useState(false);
+  const [deepseekKeyStatus, setDeepseekKeyStatus] = useState('');  // success/error msg
+  const [deepseekRemaining, setDeepseekRemaining] = useState<number>(-1);
+  const [deepseekDailyLimit, setDeepseekDailyLimit] = useState(100);
 
   useEffect(() => {
     const init = async () => {
@@ -132,6 +135,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             setCreditsBalance(profile.credits?.balance || 0);
             setHasDeepseekKey(profile.hasDeepseekKey || false);
             setDeepseekKeyMasked(profile.deepseekKeyMasked || '');
+          }
+          // 加载 DeepSeek 剩余次数
+          const usageRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/usage', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (usageRes.ok) {
+            const usage = await usageRes.json();
+            setDeepseekRemaining(usage.remaining);
+            setDeepseekDailyLimit(usage.daily_limit);
           }
         }
       } catch { /* silent */ }
@@ -408,7 +420,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
 
         {/* 本地模型管理 */}
         <div className="settings-section">
-          <h3 className="section-title"><Brain size={18} style={{marginRight:6,verticalAlign:'middle'}} /> 本地模型管理</h3>
+          <h3 className="section-title">本地模型管理</h3>
           <div className="setting-item">
             <span>推理引擎</span>
             <span className="tag-green"><CheckCircle2 size={14} style={{marginRight:3}} /> 已内置</span>
@@ -467,71 +479,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           </div>
         </div>
 
-        {/* 积分 & DeepSeek Key */}
-        {user && (
-          <div className="settings-section">
-            <h3 className="section-title"><Coins size={18} style={{marginRight:6,verticalAlign:'middle'}} /> 积分 & DeepSeek</h3>
-            <div className="setting-item">
-              <span>积分余额</span>
-              <span className="tag-green" style={{fontWeight:600}}>{creditsBalance}</span>
-            </div>
-            <div className="setting-item">
-              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {hasDeepseekKey && !showKeyInput && (
-                  <>
-                    <span className="tag-green" style={{fontSize:12}}>{deepseekKeyMasked}</span>
-                    <button className="action-link" style={{fontSize:12}} onClick={() => {
-                      setShowKeyInput(true); setDeepseekKeyInput('');
-                    }}>更换</button>
-                    <button className="action-link" style={{fontSize:12,color:'var(--danger)'}} onClick={async () => {
-                      try {
-                        const token = localStorage.getItem('auth_token');
-                        await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
-                          method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ key: '' }),
-                        });
-                        setHasDeepseekKey(false); setDeepseekKeyMasked('');
-                        showStatus('DeepSeek 密钥已清除 ✅');
-                      } catch (e) { showStatus(`清除失败: ${e}`); }
-                    }}>清除</button>
-                  </>
-                )}
-                {(!hasDeepseekKey || showKeyInput) && (
-                  <>
-                    <input
-                      type="password"
-                      placeholder="sk-..."
-                      value={deepseekKeyInput}
-                      onChange={e => setDeepseekKeyInput(e.target.value)}
-                      style={{ width: 200, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)' }}
-                    />
-                    <button className="action-link" style={{fontSize:12}} onClick={async () => {
-                      if (!deepseekKeyInput.trim()) return;
-                      try {
-                        const token = localStorage.getItem('auth_token');
-                        await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
-                          method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ key: deepseekKeyInput.trim() }),
-                        });
-                        setHasDeepseekKey(true);
-                        const k = deepseekKeyInput.trim();
-                        setDeepseekKeyMasked(k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****');
-                        setDeepseekKeyInput(''); setShowKeyInput(false);
-                        showStatus('DeepSeek 密钥已保存 ✅');
-                      } catch (e) { showStatus(`保存失败: ${e}`); }
-                    }}>保存</button>
-                    {showKeyInput && <button className="action-link" style={{fontSize:12}} onClick={() => setShowKeyInput(false)}>取消</button>}
-                  </>
-                )}
-              </div>
-            </div>
-            <div style={{fontSize:11,color:'var(--text-secondary)',padding:'4px 16px'}}>
-              配置自己的 DeepSeek API Key 后，使用云端模型无每日次数限制，消耗您自己的 token。
-            </div>
-          </div>
-        )}
-
         {/* 安全设置 */}
         <div className="settings-section">
           <h3 className="section-title">{t('securitySettings', lang)}</h3>
@@ -547,6 +494,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               {vipDisplay}
             </span>
           </div>
+          {/* #10: 积分余额 + DeepSeek 剩余次数 */}
+          {user && (
+            <>
+              <div className="setting-item">
+                <span>积分余额</span>
+                <span className="tag-green" style={{fontWeight:600}}>{creditsBalance}</span>
+              </div>
+              <div className="setting-item">
+                <span>DeepSeek 剩余次数</span>
+                <span style={{color: deepseekRemaining < 0 ? '#22c55e' : deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
+                  {deepseekRemaining < 0 ? '无限制（自有密钥）' : `${deepseekRemaining} / ${deepseekDailyLimit} 次/今日`}
+                </span>
+              </div>
+            </>
+          )}
           {user && (
             <div style={{ marginTop: 10 }}>
               <button className="btn-check-update" style={{ fontSize: 13, padding: '6px 14px' }} onClick={() => { setShowChangePwd(true); setPwdMsg(''); setOldPwd(''); setNewPwd(''); }}>
@@ -559,6 +521,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         {/* 其他 */}
         <div className="settings-section">
           <h3 className="section-title">{t('other', lang)}</h3>
+
+          {/* #11: DeepSeek 密钥配置 — 独立设置项 */}
+          {user && (
+            <div className="setting-item">
+              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={hasDeepseekKey ? 'tag-green' : 'tag-gray'} style={{fontSize:12}}>
+                  {hasDeepseekKey ? `已配置 (${deepseekKeyMasked})` : '未配置'}
+                </span>
+                <button className="btn-check-update" style={{ fontSize: 12, padding: '4px 12px', marginTop: 0 }}
+                  onClick={() => { setShowDeepseekModal(true); setDeepseekKeyInput(''); setDeepseekKeyStatus(''); }}>
+                  {hasDeepseekKey ? '修改密钥' : '配置密钥'}
+                </button>
+              </div>
+            </div>
+          )}
           {qqGroups.length > 0 && qqGroups.map(g => (
             <div className="setting-item" key={g.id}>
               <span>{g.name}</span>
@@ -646,6 +624,70 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   } catch { setPwdMsg(lang === 'zh' ? '网络错误' : 'Network error'); }
                 }}>{lang === 'zh' ? '保存' : 'Save'}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* #11: DeepSeek 密钥修改弹窗 */}
+      {showDeepseekModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '28px 32px', minWidth: 380, maxWidth: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ margin: '0 0 18px 0', fontSize: 16, color: 'var(--text-primary)' }}>DeepSeek 密钥配置</h3>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                API Key
+              </label>
+              <input
+                type="password"
+                value={deepseekKeyInput}
+                onChange={e => setDeepseekKeyInput(e.target.value)}
+                placeholder="sk-..."
+                style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-color)', borderRadius: 8, fontSize: 13, background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:14}}>
+              配置自己的 DeepSeek API Key 后，使用云端模型无每日次数限制，消耗您自己的 token。
+            </div>
+            {deepseekKeyStatus && <p style={{ fontSize: 13, color: deepseekKeyStatus.startsWith('✅') ? '#22c55e' : '#ef4444', margin: '0 0 10px 0' }}>{deepseekKeyStatus}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              {hasDeepseekKey && (
+                <button onClick={async () => {
+                  try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
+                      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ key: '' }),
+                    });
+                    setHasDeepseekKey(false); setDeepseekKeyMasked(''); setDeepseekRemaining(100);
+                    setDeepseekKeyStatus('✅ 密钥已清除');
+                    setTimeout(() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }, 1500);
+                  } catch (e) { setDeepseekKeyStatus(`清除失败: ${e}`); }
+                }} style={{ padding: '8px 20px', border: '1px solid #ef4444', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444' }}>
+                  清除密钥
+                </button>
+              )}
+              <button onClick={() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }}
+                style={{ padding: '8px 20px', border: '1px solid var(--border-color)', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
+                取消
+              </button>
+              <button className="btn-check-update" style={{ fontSize: 13, padding: '8px 20px', marginTop: 0 }} onClick={async () => {
+                if (!deepseekKeyInput.trim()) { setDeepseekKeyStatus('请输入 API Key'); return; }
+                try {
+                  const token = localStorage.getItem('auth_token');
+                  const resp = await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ key: deepseekKeyInput.trim() }),
+                  });
+                  if (!resp.ok) { const e = await resp.json(); setDeepseekKeyStatus(`配置失败: ${e.error || '未知错误'}`); return; }
+                  setHasDeepseekKey(true);
+                  const k = deepseekKeyInput.trim();
+                  setDeepseekKeyMasked(k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****');
+                  setDeepseekKeyInput(''); setDeepseekRemaining(-1);
+                  setDeepseekKeyStatus('✅ 密钥配置成功');
+                  setTimeout(() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }, 1500);
+                } catch (e) { setDeepseekKeyStatus(`配置失败: ${e}`); }
+              }}>保存</button>
             </div>
           </div>
         </div>

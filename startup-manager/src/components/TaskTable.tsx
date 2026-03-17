@@ -100,6 +100,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
           <div className="task-cell">{t('executionTime', lang)}</div>
           <div className="task-cell">{t('nextRun', lang)}</div>
           <div className="task-cell">{t('selectPath', lang)}</div>
+          <div className="task-cell">关联录制动作</div>
           <div className="task-cell">{t('noteLabel', lang)}</div>
           <div className="task-cell" style={{ textAlign: 'right' }}>{t('status', lang)}</div>
           <div className="task-cell" style={{ textAlign: 'right' }}>{t('enable', lang)}</div>

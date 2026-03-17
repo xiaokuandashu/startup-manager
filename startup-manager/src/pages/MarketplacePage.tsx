@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language } from '../i18n';
-import { Search, Cloud, Wifi, WifiOff, ClipboardList, Globe, Briefcase, Wrench, MessageCircle, Settings, FolderOpen, Package, Star, Download, Coins, Pin, SearchX, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Search, Cloud, Wifi, WifiOff, ClipboardList, Globe, Briefcase, Wrench, MessageCircle, Settings, FolderOpen, Package, Star, Download, Coins, Pin, SearchX, CheckCircle2, XCircle, Clock, Monitor, Apple } from 'lucide-react';
 
 const API_BASE = 'https://bt.aacc.fun:8888/api';
 
@@ -18,6 +18,7 @@ interface MarketTask {
   publisher: string;
   created_at: string;
   user_id: string;
+  platform?: string;
 }
 
 interface TaskDetail extends MarketTask {
@@ -59,6 +60,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [activePlatform, setActivePlatform] = useState<'all'|'windows'|'macos'>('all');
 
   // 积分
   const [credits, setCredits] = useState(0);
@@ -86,7 +88,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
   const [mktMode, setMktMode] = useState<'cloud' | 'local' | 'auto'>('auto');
   const [isOnline, setIsOnline] = useState(true);
 
-  useEffect(() => { loadItems(); loadCredits(); }, [activeCategory, searchQuery, sortBy, page, mktMode]);
+  useEffect(() => { loadItems(); loadCredits(); }, [activeCategory, searchQuery, sortBy, page, mktMode, activePlatform]);
 
   // 检测网络
   useEffect(() => {
@@ -125,6 +127,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
         if (searchQuery) params.set('search', searchQuery);
         if (sortBy === 'downloads') params.set('sort', 'downloads');
         if (sortBy === 'rating') params.set('sort', 'rating');
+        if (activePlatform !== 'all') params.set('platform', activePlatform);
         const resp = await fetch(`${API_BASE}/marketplace/list?${params}`);
         const data = await resp.json();
         if (data.tasks?.length > 0 || mktMode === 'cloud') {
@@ -450,6 +453,15 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
             <button key={cat} className={`mkt-cat-btn ${activeCategory === cat ? 'active' : ''}`}
               onClick={() => { setActiveCategory(cat); setPage(1); }}>
               {CATEGORY_ICONS[cat] || <Package size={14} />} {cat}
+            </button>
+          ))}
+        </div>
+        <div className="mkt-categories" style={{marginTop:6}}>
+          {(['all', 'windows', 'macos'] as const).map(p => (
+            <button key={p} className={`mkt-cat-btn ${activePlatform === p ? 'active' : ''}`}
+              onClick={() => { setActivePlatform(p); setPage(1); }}>
+              {p === 'all' ? <Globe size={14} /> : p === 'windows' ? <Monitor size={14} /> : <Apple size={14} />}
+              {' '}{p === 'all' ? '全部平台' : p === 'windows' ? 'Windows' : 'macOS'}
             </button>
           ))}
         </div>

@@ -223,6 +223,8 @@ export function initDB() {
   try { db.exec('ALTER TABLE plans ADD COLUMN credits INTEGER DEFAULT 0'); } catch {}
   // users 新增 deepseek_key 字段
   try { db.exec('ALTER TABLE users ADD COLUMN deepseek_key TEXT'); } catch {}
+  // marketplace_tasks 新增 platform 字段
+  try { db.exec("ALTER TABLE marketplace_tasks ADD COLUMN platform TEXT DEFAULT 'all'"); } catch {}
 
   // 初始化默认管理员
   const adminExists = db.prepare('SELECT id FROM admin WHERE username = ?').get('admin');

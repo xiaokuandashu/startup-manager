@@ -355,7 +355,7 @@ body {
 }
 .task-table-header {
   display: grid;
-  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 100px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 12px 16px;
   background: #fafafa;
@@ -367,7 +367,7 @@ body {
 .task-table-body { flex: 1; overflow-y: auto; min-height: 200px; }
 .task-row {
   display: grid;
-  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 100px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid #f5f5f5;
@@ -3263,7 +3263,7 @@ body {
   display: flex !important;
   align-items: center;
   gap: 4px;
-  padding: 6px 6px 6px 10px !important;
+  padding: 6px 8px !important;
   border-radius: 8px !important;
   font-size: 12px !important;
   cursor: pointer;

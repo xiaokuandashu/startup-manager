@@ -43,7 +43,7 @@ router.post('/login', (req, res) => {
   }
 
   db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
-  const token = jwt.sign({ id: user.id, type: 'user' }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: user.id, type: 'user' }, JWT_SECRET, { expiresIn: '30d' });
   console.log(`[认证] 用户登录(验证码): ${email}`);
 
   res.json({
@@ -78,7 +78,7 @@ router.post('/login-password', (req, res) => {
   }
 
   db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
-  const token = jwt.sign({ id: user.id, type: 'user' }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: user.id, type: 'user' }, JWT_SECRET, { expiresIn: '30d' });
   console.log(`[认证] 用户登录(密码): ${email}`);
 
   res.json({
@@ -120,7 +120,7 @@ router.post('/register', (req, res) => {
   console.log(`[认证] 新用户注册: ${email}`);
 
   db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(userId);
-  const token = jwt.sign({ id: userId, type: 'user' }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: userId, type: 'user' }, JWT_SECRET, { expiresIn: '30d' });
 
   res.json({
     token,

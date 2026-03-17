@@ -300,6 +300,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               // 刷新剩余次数 — 先乐观递减，再从服务器刷新
               setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, prev.remaining - 1) }));
               loadDeepseekUsage();
+            } else if (proxyRes.status === 401) {
+              response = { message: `⚠️ 登录已过期，请退出重新登录后再试`, response_type: 'error', tasks: [] };
             } else {
               const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
               response = { message: `❌ DeepSeek 云端错误: ${errData.error || proxyRes.statusText}`, response_type: 'error', tasks: [] };

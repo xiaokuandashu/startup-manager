@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../i18n';
-import { Circle, List, Network } from 'lucide-react';
+import { Circle, List, Network, Mouse, MousePointer, Keyboard, Brain, Camera, Crosshair, RefreshCw, FolderOpen, Package, FileText, CircleDot, Hexagon, Clock, Edit3, Save, Trash2, AlertTriangle, Square, CheckCircle2, Pause } from 'lucide-react';
 import RecordingMindMap from '../components/RecordingMindMap';
 
 interface RecordedStep {
@@ -41,8 +41,8 @@ interface RecordingPageProps {
   lang?: Language;
 }
 
-const NODE_ICONS: Record<string, string> = {
-  action: '🔵', condition: '🔶', wait: '⏳', loop: '🔄', open_app: '📂', sub_flow: '📦',
+const NODE_ICONS: Record<string, React.ReactNode> = {
+  action: <CircleDot size={14} color="#3b82f6" />, condition: <Hexagon size={14} color="#f59e0b" />, wait: <Clock size={14} />, loop: <RefreshCw size={14} />, open_app: <FolderOpen size={14} />, sub_flow: <Package size={14} />,
 };
 
 const NODE_LABELS: Record<string, string> = {
@@ -50,16 +50,16 @@ const NODE_LABELS: Record<string, string> = {
 };
 
 const MODE_OPTIONS = [
-  { id: 'full', label: '🖱️ 全量', desc: '鼠标+键盘' },
-  { id: 'mouse_only', label: '🖱️ 仅鼠标', desc: '点击/滚轮' },
-  { id: 'keyboard_only', label: '⌨️ 仅键盘', desc: '按键输入' },
-  { id: 'smart', label: '🧠 智能', desc: '自动过滤' },
-  { id: 'screenshot', label: '📸 截图', desc: '每步截图' },
-  { id: 'element', label: '🎯 元素', desc: 'UI元素' },
+  { id: 'full', label: <><Mouse size={14} /> 全量</>, desc: '鼠标+键盘' },
+  { id: 'mouse_only', label: <><Mouse size={14} /> 仅鼠标</>, desc: '点击/滚轮' },
+  { id: 'keyboard_only', label: <><Keyboard size={14} /> 仅键盘</>, desc: '按键输入' },
+  { id: 'smart', label: <><Brain size={14} /> 智能</>, desc: '自动过滤' },
+  { id: 'screenshot', label: <><Camera size={14} /> 截图</>, desc: '每步截图' },
+  { id: 'element', label: <><Crosshair size={14} /> 元素</>, desc: 'UI元素' },
 ];
 
-const STEP_ICONS: Record<string, string> = {
-  mouse_move: '🖱️', mouse_click: '👆', mouse_release: '👆', mouse_scroll: '📜', key_press: '⌨️', key_release: '⌨️',
+const STEP_ICONS: Record<string, React.ReactNode> = {
+  mouse_move: <Mouse size={12} />, mouse_click: <MousePointer size={12} />, mouse_release: <MousePointer size={12} />, mouse_scroll: <FileText size={12} />, key_press: <Keyboard size={12} />, key_release: <Keyboard size={12} />,
 };
 
 const formatDuration = (ms: number): string => {
@@ -263,7 +263,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
           <button className="rec-btn rec-btn-back" onClick={() => { setEditingRec(null); setSelectedNode(null); }}>
             ← 返回
           </button>
-          <h3>📝 编辑: {editingRec.name}</h3>
+          <h3><Edit3 size={14} style={{marginRight:4,verticalAlign:'middle'}} /> 编辑: {editingRec.name}</h3>
           <div className="rec-editor-info">
             {nodes.length} 个节点 · {formatDuration(editingRec.duration_ms)}
           </div>
@@ -301,7 +301,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                 </div>
                 <div className="rec-prop-row">
                   <label>状态</label>
-                  <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
+                  <span>{selectedNodeData.enabled ? <><CheckCircle2 size={12} /> 启用</> : <><Pause size={12} /> 禁用</>}</span>
                 </div>
                 {selectedNodeData.note && (
                   <div className="rec-prop-row">
@@ -341,11 +341,11 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
             <div className="rec-node-toolbar">
               <span className="rec-node-toolbar-label">新增节点:</span>
               {[
-                { type: 'action', icon: '🔵', label: '操作' },
-                { type: 'condition', icon: '🔶', label: '条件' },
-                { type: 'wait', icon: '⏳', label: '等待' },
-                { type: 'loop', icon: '🔄', label: '循环' },
-                { type: 'open_app', icon: '📂', label: '打开应用' },
+                { type: 'action', icon: <CircleDot size={14} color="#3b82f6" />, label: '操作' },
+                { type: 'condition', icon: <Hexagon size={14} color="#f59e0b" />, label: '条件' },
+                { type: 'wait', icon: <Clock size={14} />, label: '等待' },
+                { type: 'loop', icon: <RefreshCw size={14} />, label: '循环' },
+                { type: 'open_app', icon: <FolderOpen size={14} />, label: '打开应用' },
               ].map(btn => (
                 <button key={btn.type} className="rec-node-add-btn" onClick={() => handleAddNode(btn.type)}>
                   {btn.icon} {btn.label}
@@ -409,7 +409,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                   </div>
                   <div className="rec-prop-row">
                     <label>状态</label>
-                    <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
+                    <span>{selectedNodeData.enabled ? <><CheckCircle2 size={12} /> 启用</> : <><Pause size={12} /> 禁用</>}</span>
                   </div>
                   {selectedNodeData.note && (
                     <div className="rec-prop-row">
@@ -496,14 +496,14 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                 <button className="rec-btn rec-btn-pause" onClick={handlePause}>
                   {recordingState === 'paused' ? '▶ 继续' : '⏸ 暂停'}
                 </button>
-                <button className="rec-btn rec-btn-stop" onClick={handleStop}>⏹ 停止</button>
+                <button className="rec-btn rec-btn-stop" onClick={handleStop}><Square size={14} style={{marginRight:3}} /> 停止</button>
               </div>
             </div>
           )}
         </div>
 
         {recordingState !== 'idle' && (
-          <div className="rec-permission-note">⚠️ macOS 需在「系统设置 → 隐私安全 → 辅助功能」中授权</div>
+          <div className="rec-permission-note"><AlertTriangle size={14} style={{marginRight:4,verticalAlign:'middle'}} /> macOS 需在「系统设置 → 隐私安全 → 辅助功能」中授权</div>
         )}
       </div>
 
@@ -523,7 +523,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
             />
             <div className="rec-save-actions">
               <button className="rec-btn rec-btn-cancel" onClick={() => { setShowSaveDialog(false); setSteps([]); }}>丢弃</button>
-              <button className="rec-btn rec-btn-save" onClick={handleSave} disabled={!saveName.trim()}>💾 保存</button>
+              <button className="rec-btn rec-btn-save" onClick={handleSave} disabled={!saveName.trim()}><Save size={14} style={{marginRight:3}} /> 保存</button>
             </div>
           </div>
         </div>
@@ -531,7 +531,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
 
       {/* 已保存的录制列表 */}
       <div className="rec-saved-list">
-        <h4>📁 已保存的录制（{savedRecordings.length}）</h4>
+        <h4><FolderOpen size={14} style={{marginRight:4,verticalAlign:'middle'}} /> 已保存的录制（{savedRecordings.length}）</h4>
         {savedRecordings.length === 0 ? (
           <div className="rec-empty">
             <div className="rec-empty-icon">🎬</div>
@@ -547,17 +547,17 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                 </div>
                 <div className="rec-card-info">
                   <span>🕐 {formatDuration(rec.duration_ms)}</span>
-                  <span>📝 {rec.step_count} 步</span>
+                  <span><FileText size={12} style={{marginRight:2}} /> {rec.step_count} 步</span>
                   {rec.nodes && rec.nodes.length > 0 && <span>🌳 {rec.nodes.length} 节点</span>}
                 </div>
                 <div className="rec-card-actions">
                   <button className="rec-btn rec-btn-edit" onClick={() => { setEditingRec(rec); setSelectedNode(null); }}>
-                    ✏️ 编辑
+                    <Edit3 size={12} style={{marginRight:2}} /> 编辑
                   </button>
                   <button className="rec-btn rec-btn-play" onClick={() => handlePlay(rec)} disabled={isPlaying || recordingState !== 'idle'}>
                     {isPlaying ? '⏳ 回放中...' : '▶ 回放'}
                   </button>
-                  <button className="rec-btn rec-btn-delete" onClick={() => handleDelete(rec.id)}>🗑️</button>
+                  <button className="rec-btn rec-btn-delete" onClick={() => handleDelete(rec.id)}><Trash2 size={14} /></button>
                 </div>
               </div>
             ))}

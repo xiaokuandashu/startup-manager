@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language } from '../i18n';
-import { Search, Cloud, Wifi, WifiOff } from 'lucide-react';
+import { Search, Cloud, Wifi, WifiOff, ClipboardList, Globe, Briefcase, Wrench, MessageCircle, Settings, FolderOpen, Package, Star, Download, Coins, Pin, SearchX, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 const API_BASE = 'https://bt.aacc.fun:8888/api';
 
@@ -40,9 +40,9 @@ interface MarketplacePageProps {
 }
 
 const CATEGORIES = ['全部', '通用', '办公效率', '开发工具', '社交通讯', '系统管理', '文件管理', '其他'];
-const CATEGORY_ICONS: Record<string, string> = {
-  '全部': '📋', '通用': '🌐', '办公效率': '💼', '开发工具': '🛠️',
-  '社交通讯': '💬', '系统管理': '⚙️', '文件管理': '📁', '其他': '📦',
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  '全部': <ClipboardList size={14} />, '通用': <Globe size={14} />, '办公效率': <Briefcase size={14} />, '开发工具': <Wrench size={14} />,
+  '社交通讯': <MessageCircle size={14} />, '系统管理': <Settings size={14} />, '文件管理': <FolderOpen size={14} />, '其他': <Package size={14} />,
 };
 const SAFETY_ICONS: Record<string, string> = {
   safe: '🟢', review: '🟡', dangerous: '🔴',
@@ -314,9 +314,9 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
           <div className="mkt-detail-main">
             <div className="mkt-detail-info">
               <span>{SAFETY_ICONS[detailTask.safety_level]} {SAFETY_LABELS[detailTask.safety_level]}</span>
-              <span>📁 {detailTask.category}</span>
+              <span><FolderOpen size={12} style={{marginRight:2,verticalAlign:'middle'}} /> {detailTask.category}</span>
               <span>⬇ {detailTask.download_count} 下载</span>
-              <span>⭐ {detailTask.rating.toFixed(1)} ({detailTask.rating_count}评)</span>
+              <span><Star size={12} style={{marginRight:2,verticalAlign:'middle'}} /> {detailTask.rating.toFixed(1)} ({detailTask.rating_count}评)</span>
               <span>👤 {detailTask.publisher}</span>
             </div>
             <p className="mkt-detail-desc">{detailTask.description || '暂无描述'}</p>
@@ -324,13 +324,13 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
               {detailTask.tags.map((t, i) => <span key={i} className="mkt-tag">#{t}</span>)}
             </div>
             <button className="mkt-btn-download mkt-btn-big" onClick={() => handleDownload(detailTask.id, detailTask.name)}>
-              📥 下载（{detailTask.cost_credits} 积分）
+              <Download size={14} style={{marginRight:3}} /> 下载（{detailTask.cost_credits} 积分）
             </button>
           </div>
 
           {/* 评论区 */}
           <div className="mkt-comments">
-            <h4>💬 评论 ({detailTask.comments?.length || 0})</h4>
+            <h4><MessageCircle size={14} style={{marginRight:4,verticalAlign:'middle'}} /> 评论 ({detailTask.comments?.length || 0})</h4>
             {userId && (
               <div className="mkt-comment-form">
                 <div className="mkt-comment-rating">
@@ -367,7 +367,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
       <div className="mkt-page">
         <div className="mkt-header">
           <button className="mkt-back-btn" onClick={() => setShowMyTasks(false)}>← 返回</button>
-          <h3>📋 我的发布</h3>
+          <h3><ClipboardList size={14} style={{marginRight:4,verticalAlign:'middle'}} /> 我的发布</h3>
         </div>
         <div className="mkt-my-list">
           {myTasks.length === 0 ? (
@@ -377,10 +377,10 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
               <div className="mkt-my-name">{t.name}</div>
               <div className="mkt-my-meta">
                 <span className={`mkt-status mkt-status-${t.status}`}>{
-                  t.status === 'approved' ? '✅ 已通过' : t.status === 'pending' ? '⏳ 审核中' : `❌ 已拒绝${t.reject_reason ? ': ' + t.reject_reason : ''}`
+                  t.status === 'approved' ? <><CheckCircle2 size={12} /> 已通过</> : t.status === 'pending' ? <><Clock size={12} /> 审核中</> : <><XCircle size={12} /> 已拒绝{t.reject_reason ? ': ' + t.reject_reason : ''}</>
                 }</span>
                 <span>⬇ {t.download_count}</span>
-                <span>⭐ {t.rating?.toFixed(1) || '0'}</span>
+                <span><Star size={12} style={{marginRight:2}} /> {t.rating?.toFixed(1) || '0'}</span>
               </div>
             </div>
           ))}
@@ -404,7 +404,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
         </select>
         <label>标签（逗号分隔）</label>
         <input value={pubTags} onChange={e => setPubTags(e.target.value)} placeholder="打卡,微信,自动化" />
-        <p className="mkt-publish-note">📌 将自动提交最新的录制和任务配置，通过安全审核后发布</p>
+        <p className="mkt-publish-note"><Pin size={12} style={{marginRight:3,verticalAlign:'middle'}} /> 将自动提交最新的录制和任务配置，通过安全审核后发布</p>
         <div className="mkt-publish-actions">
           <button className="mkt-btn-cancel" onClick={() => setShowPublish(false)}>取消</button>
           <button className="mkt-btn-publish" onClick={handlePublish} disabled={!pubName.trim()}>发布</button>
@@ -438,8 +438,8 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
               <WifiOff size={14} /> 本地
             </button>
           </div>
-          {userId && <span className="mkt-credits" title="我的积分">💰 {credits} 积分</span>}
-          <button className="mkt-btn-my" onClick={loadMyTasks}>📋 我的发布</button>
+          {userId && <span className="mkt-credits" title="我的积分"><Coins size={14} style={{marginRight:3,verticalAlign:'middle'}} /> {credits} 积分</span>}
+          <button className="mkt-btn-my" onClick={loadMyTasks}><ClipboardList size={14} style={{marginRight:3}} /> 我的发布</button>
           <button className="mkt-btn-pub" onClick={() => setShowPublish(true)}>📤 发布</button>
         </div>
       </div>
@@ -449,7 +449,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
           {CATEGORIES.map(cat => (
             <button key={cat} className={`mkt-cat-btn ${activeCategory === cat ? 'active' : ''}`}
               onClick={() => { setActiveCategory(cat); setPage(1); }}>
-              {CATEGORY_ICONS[cat] || '📦'} {cat}
+              {CATEGORY_ICONS[cat] || <Package size={14} />} {cat}
             </button>
           ))}
         </div>
@@ -471,7 +471,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
           <div className="mkt-loading">加载中...</div>
         ) : items.length === 0 ? (
           <div className="mkt-empty">
-            <div className="mkt-empty-icon">🔍</div>
+            <div className="mkt-empty-icon"><SearchX size={48} /></div>
             <div className="mkt-empty-text">暂无任务{searchQuery ? '，换个关键词试试' : '，成为第一个发布者！'}</div>
           </div>
         ) : items.map(item => (
@@ -479,7 +479,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
             <div className="mkt-card-top">
               <span className="mkt-card-safety">{SAFETY_ICONS[item.safety_level]}</span>
               <span className="mkt-card-category">{item.category}</span>
-              <span className="mkt-card-cost">💰 {item.cost_credits}</span>
+              <span className="mkt-card-cost"><Coins size={12} style={{marginRight:2}} /> {item.cost_credits}</span>
             </div>
             <div className="mkt-card-name">{item.name}</div>
             <div className="mkt-card-desc">{item.description || '暂无描述'}</div>
@@ -488,12 +488,12 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
             </div>
             <div className="mkt-card-footer">
               <div className="mkt-card-stats">
-                <span>⭐ {item.rating.toFixed(1)}</span>
+                <span><Star size={12} style={{marginRight:2}} /> {item.rating.toFixed(1)}</span>
                 <span>⬇ {item.download_count}</span>
                 <span>👤 {item.publisher?.split('@')[0]}</span>
               </div>
               <button className="mkt-btn-download" onClick={e => { e.stopPropagation(); handleDownload(item.id, item.name); }}>
-                📥 获取
+                <Download size={14} style={{marginRight:3}} /> 获取
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2 } from 'lucide-react';
+import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2 } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -48,19 +48,19 @@ interface ModelInfo {
 }
 
 const QUICK_COMMANDS = [
-  { label: '打开微信', icon: '💬' },
-  { label: '每天9点打开Chrome', icon: '🌐' },
-  { label: '开机启动钉钉', icon: '📌' },
-  { label: '查看所有任务', icon: '📋' },
-  { label: '帮助', icon: '❓' },
+  { label: '打开微信', icon: <MessageCircle size={14} /> },
+  { label: '每天9点打开Chrome', icon: <Globe size={14} /> },
+  { label: '开机启动钉钉', icon: <Pin size={14} /> },
+  { label: '查看所有任务', icon: <ClipboardList size={14} /> },
+  { label: '帮助', icon: <Lightbulb size={14} /> },
 ];
 
-const SCHEDULE_LABELS: Record<string, string> = {
-  startup: '🚀 开机启动',
-  once: '⚡ 一次性',
-  daily: '📅 每天',
-  weekly: '📆 每周',
-  monthly: '🗓️ 每月',
+const SCHEDULE_LABELS: Record<string, React.ReactNode> = {
+  startup: <><Rocket size={12} /> 开机启动</>,
+  once: <><Clock size={12} /> 一次性</>,
+  daily: <><Calendar size={12} /> 每天</>,
+  weekly: <><CalendarDays size={12} /> 每周</>,
+  monthly: <><CalendarDays size={12} /> 每月</>,
 };
 
 const WELCOME_MSG: ChatMessage = {
@@ -433,7 +433,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             </div>
           ))}
           <div className="ai-model-panel-note">
-            💡 本地模型内置推理引擎，无需安装外部软件。点击模型即可自动下载并启动。
+            <Lightbulb size={12} style={{marginRight:3,verticalAlign:'middle'}} /> 本地模型内置推理引擎，无需安装外部软件。点击模型即可自动下载并启动。
           </div>
         </div>
       )}
@@ -485,7 +485,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                               className="ai-btn-add-task"
                               onClick={() => handleAddTask(task)}
                             >
-                              ✅ 添加到主页
+                              <CheckCircle2 size={14} style={{marginRight:3}} /> 添加到主页
                             </button>
                           </div>
                         </div>
@@ -508,7 +508,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           </button>
         ))}
         <button className="ai-quick-btn ai-quick-clear" onClick={clearHistory}>
-          🗑️ 清空
+          <Trash2 size={12} style={{marginRight:3}} /> 清空
         </button>
       </div>
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language } from '../i18n';
+import { Search, Cloud, Wifi, WifiOff } from 'lucide-react';
 
 const API_BASE = 'https://bt.aacc.fun:8888/api';
 
@@ -81,7 +82,24 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
   const userId = localStorage.getItem('user_id') || '';
   const token = localStorage.getItem('auth_token') || '';
 
-  useEffect(() => { loadItems(); loadCredits(); }, [activeCategory, searchQuery, sortBy, page]);
+  // 双模式: cloud=仅云端, local=仅本地, auto=云端优先+本地兜底
+  const [mktMode, setMktMode] = useState<'cloud' | 'local' | 'auto'>('auto');
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => { loadItems(); loadCredits(); }, [activeCategory, searchQuery, sortBy, page, mktMode]);
+
+  // 检测网络
+  useEffect(() => {
+    const checkOnline = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/marketplace/list?limit=1`, { signal: AbortSignal.timeout(3000) });
+        setIsOnline(r.ok);
+      } catch { setIsOnline(false); }
+    };
+    checkOnline();
+    const interval = setInterval(checkOnline, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const loadCredits = async () => {
     if (!userId || !token) return;
@@ -96,18 +114,60 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
 
   const loadItems = async () => {
     setIsLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (activeCategory !== '全部') params.set('category', activeCategory);
-      if (searchQuery) params.set('search', searchQuery);
-      if (sortBy === 'downloads') params.set('sort', 'downloads');
-      if (sortBy === 'rating') params.set('sort', 'rating');
+    const useCloud = mktMode === 'cloud' || (mktMode === 'auto' && isOnline);
+    const useLocal = mktMode === 'local' || mktMode === 'auto';
 
-      const resp = await fetch(`${API_BASE}/marketplace/list?${params}`);
-      const data = await resp.json();
-      setItems(data.tasks || []);
-      setTotal(data.total || 0);
-    } catch { setItems([]); }
+    // 尝试云端
+    if (useCloud) {
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: '20' });
+        if (activeCategory !== '全部') params.set('category', activeCategory);
+        if (searchQuery) params.set('search', searchQuery);
+        if (sortBy === 'downloads') params.set('sort', 'downloads');
+        if (sortBy === 'rating') params.set('sort', 'rating');
+        const resp = await fetch(`${API_BASE}/marketplace/list?${params}`);
+        const data = await resp.json();
+        if (data.tasks?.length > 0 || mktMode === 'cloud') {
+          setItems(data.tasks || []);
+          setTotal(data.total || 0);
+          setIsLoading(false);
+          return;
+        }
+      } catch {
+        if (mktMode === 'cloud') { setItems([]); setIsLoading(false); return; }
+      }
+    }
+
+    // 本地兜底 (auto模式云端无数据/失败, 或 local模式)
+    if (useLocal && (window as any).__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const localItems = await invoke<any[]>('marketplace_browse', {
+          category: activeCategory !== '全部' ? activeCategory : null,
+          search: searchQuery || null,
+        });
+        // 转换为前端MarketTask格式
+        const converted: MarketTask[] = (localItems || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          description: item.description || '',
+          category: item.category || '其他',
+          tags: item.tags || [],
+          cost_credits: 0,
+          safety_level: 'safe',
+          rating: item.rating || 0,
+          rating_count: 0,
+          download_count: item.downloads || 0,
+          publisher: item.author || '本地',
+          created_at: item.created_at || '',
+          user_id: '',
+        }));
+        setItems(converted);
+        setTotal(converted.length);
+      } catch { setItems([]); }
+    } else if (!useCloud) {
+      setItems([]);
+    }
     setIsLoading(false);
   };
 
@@ -176,38 +236,52 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
   const handlePublish = async () => {
     if (!pubName.trim() || !userId) return;
     try {
-      // 获取本地录制列表作为发布内容
       let recordingData = null;
       let taskConfig = null;
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
         const recordings = await invoke<any[]>('recording_list');
         if (recordings.length > 0) {
-          recordingData = JSON.stringify(recordings[0]); // 发布最新录制
+          recordingData = JSON.stringify(recordings[0]);
+          // 同时发布到本地市场
+          try {
+            await invoke('marketplace_publish', {
+              recording: recordings[0],
+              description: pubDesc,
+              author: userId,
+              category: pubCategory,
+              tags: pubTags.split(',').map(t => t.trim()).filter(Boolean),
+            });
+          } catch { /* 本地发布失败不影响云端 */ }
         }
       }
       const tasks = JSON.parse(localStorage.getItem('startup_tasks') || '[]');
       if (tasks.length > 0) {
-        taskConfig = JSON.stringify(tasks[0]); // 发布最新任务
+        taskConfig = JSON.stringify(tasks[0]);
       }
 
-      const resp = await fetch(`${API_BASE}/marketplace/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          userId, name: pubName.trim(), description: pubDesc,
-          category: pubCategory, tags: pubTags.split(',').map(t => t.trim()).filter(Boolean),
-          recordingData, taskConfig,
-        }),
-      });
-      const data = await resp.json();
-      if (data.status === 'rejected') {
-        alert(`❌ 任务被自动审查拒绝：\n${data.risks?.join('\n') || '安全风险'}`);
-      } else if (data.status === 'pending') {
-        alert(`⏳ 任务已提交，等待人工审核\n风险提示：${data.risks?.join(', ') || '无'}`);
+      // 发布到云端
+      if (isOnline && mktMode !== 'local') {
+        const resp = await fetch(`${API_BASE}/marketplace/publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            userId, name: pubName.trim(), description: pubDesc,
+            category: pubCategory, tags: pubTags.split(',').map(t => t.trim()).filter(Boolean),
+            recordingData, taskConfig,
+          }),
+        });
+        const data = await resp.json();
+        if (data.status === 'rejected') {
+          alert(`❌ 任务被自动审查拒绝：\n${data.risks?.join('\n') || '安全风险'}`);
+        } else if (data.status === 'pending') {
+          alert(`⏳ 任务已提交，等待人工审核\n风险提示：${data.risks?.join(', ') || '无'}`);
+        } else {
+          alert('✅ 任务已发布并通过审核！获得 1 积分');
+          loadCredits();
+        }
       } else {
-        alert('✅ 任务已发布并通过审核！获得 1 积分');
-        loadCredits();
+        alert('✅ 任务已发布到本地市场');
       }
       setShowPublish(false);
       setPubName(''); setPubDesc(''); setPubTags('');
@@ -348,8 +422,22 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
         <div className="mkt-header-left">
           <h3>🏪 任务市场</h3>
           <span className="mkt-subtitle">发现和分享自动化任务</span>
+          <span className={`mkt-conn-badge ${isOnline ? 'online' : 'offline'}`}>
+            {isOnline ? <><Wifi size={12} /> 在线</> : <><WifiOff size={12} /> 离线</>}
+          </span>
         </div>
         <div className="mkt-header-right">
+          <div className="mkt-mode-toggle">
+            <button className={`mkt-mode-btn ${mktMode === 'cloud' ? 'active' : ''}`} onClick={() => setMktMode('cloud')} title="仅云端">
+              <Cloud size={14} /> 云端
+            </button>
+            <button className={`mkt-mode-btn ${mktMode === 'auto' ? 'active' : ''}`} onClick={() => setMktMode('auto')} title="自动（云端优先）">
+              <Wifi size={14} /> 自动
+            </button>
+            <button className={`mkt-mode-btn ${mktMode === 'local' ? 'active' : ''}`} onClick={() => setMktMode('local')} title="仅本地">
+              <WifiOff size={14} /> 本地
+            </button>
+          </div>
           {userId && <span className="mkt-credits" title="我的积分">💰 {credits} 积分</span>}
           <button className="mkt-btn-my" onClick={loadMyTasks}>📋 我的发布</button>
           <button className="mkt-btn-pub" onClick={() => setShowPublish(true)}>📤 发布</button>
@@ -372,9 +460,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
             <option value="rating">最高评分</option>
           </select>
           <div className="mkt-search-box">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+            <Search size={14} />
             <input type="text" placeholder="搜索..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} />
           </div>
         </div>

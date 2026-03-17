@@ -356,6 +356,15 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
+    // 先检查引擎是否在运行
+    let health = client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT))
+        .send().await;
+    match health {
+        Err(_) => return Err("推理引擎未运行，请先在 AI 助手页面启动引擎并加载模型".into()),
+        Ok(r) if !r.status().is_success() => return Err("推理引擎正在加载模型，请稍等几秒后重试".into()),
+        _ => {}
+    }
+
     let system_prompt = r#"你是一个桌面自动化助手。用户会用自然语言描述想做的事。
 你需要理解意图，输出 JSON 格式的任务定义。
 
@@ -397,11 +406,20 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         .send().await
         .map_err(|e| format!("推理请求失败: {}", e))?;
 
+    // 检查 HTTP 状态码
+    let status = resp.status();
+    if !status.is_success() {
+        let err_body = resp.text().await.unwrap_or_default();
+        return Err(format!("推理引擎返回错误 ({}): {}", status, &err_body[..err_body.len().min(200)]));
+    }
+
     // 先获取原始文本，再尝试多种解析方式
     let raw = resp.text().await
         .map_err(|e| format!("读取响应失败: {}", e))?;
 
-    // 方式1：标准 {content: "..."} 格式
+    if raw.is_empty() {
+        return Err("推理引擎返回空响应，模型可能未正确加载。请重启引擎后重试".into());
+    }
     if let Ok(r) = serde_json::from_str::<LlamaResponse>(&raw) {
         if let Some(c) = r.content {
             return Ok(c);

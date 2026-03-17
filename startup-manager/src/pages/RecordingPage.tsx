@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../i18n';
+import { Circle, List, Network } from 'lucide-react';
+import RecordingMindMap from '../components/RecordingMindMap';
 
 interface RecordedStep {
   type: string;
@@ -86,6 +88,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
   const [editingRec, setEditingRec] = useState<SavedRecording | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null);
+  const [editorView, setEditorView] = useState<'list' | 'mindmap'>('list');
 
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -264,118 +267,188 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
           <div className="rec-editor-info">
             {nodes.length} 个节点 · {formatDuration(editingRec.duration_ms)}
           </div>
-        </div>
-
-        {/* 添加节点工具栏 */}
-        <div className="rec-node-toolbar">
-          <span className="rec-node-toolbar-label">新增节点:</span>
-          {[
-            { type: 'action', icon: '🔵', label: '操作' },
-            { type: 'condition', icon: '🔶', label: '条件' },
-            { type: 'wait', icon: '⏳', label: '等待' },
-            { type: 'loop', icon: '🔄', label: '循环' },
-            { type: 'open_app', icon: '📂', label: '打开应用' },
-          ].map(btn => (
-            <button key={btn.type} className="rec-node-add-btn" onClick={() => handleAddNode(btn.type)}>
-              {btn.icon} {btn.label}
+          <div className="rec-view-toggle">
+            <button className={`rec-view-btn ${editorView === 'list' ? 'active' : ''}`} onClick={() => setEditorView('list')} title="列表视图">
+              <List size={16} />
             </button>
-          ))}
+            <button className={`rec-view-btn ${editorView === 'mindmap' ? 'active' : ''}`} onClick={() => setEditorView('mindmap')} title="脑图视图">
+              <Network size={16} />
+            </button>
+          </div>
         </div>
 
-        <div className="rec-editor-body">
-          {/* 节点树列表 */}
-          <div className="rec-node-list">
-            {nodes.length === 0 ? (
-              <div className="rec-empty">
-                <div className="rec-empty-icon">🌳</div>
-                <div className="rec-empty-text">暂无节点，使用工具栏添加</div>
-              </div>
-            ) : nodes.map((node, idx) => (
-              <div
-                key={node.id}
-                className={`rec-node-item ${selectedNode === node.id ? 'selected' : ''} ${!node.enabled ? 'disabled' : ''} ${dragNodeIdx === idx ? 'dragging' : ''}`}
-                draggable
-                onClick={() => setSelectedNode(node.id)}
-                onDragStart={() => setDragNodeIdx(idx)}
-                onDragOver={e => e.preventDefault()}
-                onDrop={() => {
-                  if (dragNodeIdx !== null && dragNodeIdx !== idx) handleMoveNode(dragNodeIdx, idx);
-                  setDragNodeIdx(null);
-                }}
-                onDragEnd={() => setDragNodeIdx(null)}
-              >
-                <div className="rec-node-drag">⠿</div>
-                <div className="rec-node-connector" />
-                <span className="rec-node-icon">{NODE_ICONS[node.node_type] || '❓'}</span>
-                <div className="rec-node-info">
-                  <div className="rec-node-label">{node.label}</div>
-                  <div className="rec-node-meta">
-                    {NODE_LABELS[node.node_type] || node.node_type}
-                    {node.delay_ms > 0 && ` · ${node.delay_ms}ms`}
-                  </div>
-                </div>
-                <div className="rec-node-actions">
-                  <button className={`rec-node-toggle ${node.enabled ? '' : 'off'}`} onClick={e => { e.stopPropagation(); handleToggleNode(node.id); }}>
-                    {node.enabled ? '✓' : '○'}
-                  </button>
-                  <button className="rec-node-del" onClick={e => { e.stopPropagation(); handleDeleteNode(node.id); }}>✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* 属性面板 */}
-          {selectedNodeData && (
-            <div className="rec-prop-panel">
-              <h4>{NODE_ICONS[selectedNodeData.node_type]} {selectedNodeData.label}</h4>
-              <div className="rec-prop-row">
-                <label>类型</label>
-                <span>{NODE_LABELS[selectedNodeData.node_type] || selectedNodeData.node_type}</span>
-              </div>
-              <div className="rec-prop-row">
-                <label>延迟</label>
-                <span>{selectedNodeData.delay_ms}ms</span>
-              </div>
-              <div className="rec-prop-row">
-                <label>状态</label>
-                <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
-              </div>
-              {selectedNodeData.note && (
+        {editorView === 'mindmap' ? (
+          <div className="rec-editor-body" style={{ height: 'calc(100vh - 160px)' }}>
+            <RecordingMindMap
+              nodes={nodes}
+              selectedNode={selectedNode}
+              onSelectNode={setSelectedNode}
+              onDeleteNode={handleDeleteNode}
+              onToggleNode={handleToggleNode}
+              onAddNode={handleAddNode}
+            />
+            {/* 属性面板 */}
+            {selectedNodeData && (
+              <div className="rec-prop-panel">
+                <h4>{NODE_ICONS[selectedNodeData.node_type]} {selectedNodeData.label}</h4>
                 <div className="rec-prop-row">
-                  <label>备注</label>
-                  <span>{selectedNodeData.note}</span>
+                  <label>类型</label>
+                  <span>{NODE_LABELS[selectedNodeData.node_type] || selectedNodeData.node_type}</span>
                 </div>
-              )}
-              {selectedNodeData.condition && (
-                <div className="rec-prop-section">
-                  <h5>条件规则</h5>
-                  <div className="rec-prop-row">
-                    <label>规则类型</label>
-                    <span>{selectedNodeData.condition.rule_type}</span>
-                  </div>
-                  <div className="rec-prop-row">
-                    <label>检测目标</label>
-                    <span>{selectedNodeData.condition.target || '未设置'}</span>
-                  </div>
-                  <div className="rec-prop-row">
-                    <label>超时</label>
-                    <span>{selectedNodeData.condition.timeout_ms}ms</span>
-                  </div>
+                <div className="rec-prop-row">
+                  <label>延迟</label>
+                  <span>{selectedNodeData.delay_ms}ms</span>
                 </div>
-              )}
-              {selectedNodeData.action?.steps?.length > 0 && (
-                <div className="rec-prop-section">
-                  <h5>操作步骤 ({selectedNodeData.action.steps.length})</h5>
-                  {selectedNodeData.action.steps.map((s: any, i: number) => (
-                    <div key={i} className="rec-prop-step">
-                      {STEP_ICONS[s.type] || '•'} {s.type} {s.x !== undefined && `(${Math.round(s.x)},${Math.round(s.y||0)})`} {s.key || ''} {s.button || ''}
+                <div className="rec-prop-row">
+                  <label>状态</label>
+                  <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
+                </div>
+                {selectedNodeData.note && (
+                  <div className="rec-prop-row">
+                    <label>备注</label>
+                    <span>{selectedNodeData.note}</span>
+                  </div>
+                )}
+                {selectedNodeData.condition && (
+                  <div className="rec-prop-section">
+                    <h5>条件</h5>
+                    <div className="rec-prop-row">
+                      <label>类型</label>
+                      <span>{selectedNodeData.condition.condition_type}</span>
                     </div>
-                  ))}
+                    <div className="rec-prop-row">
+                      <label>超时</label>
+                      <span>{selectedNodeData.condition.timeout_ms}ms</span>
+                    </div>
+                  </div>
+                )}
+                {selectedNodeData.action?.steps?.length > 0 && (
+                  <div className="rec-prop-section">
+                    <h5>操作步骤 ({selectedNodeData.action.steps.length})</h5>
+                    {selectedNodeData.action.steps.map((s: any, i: number) => (
+                      <div key={i} className="rec-prop-step">
+                        {STEP_ICONS[s.type] || '•'} {s.type} {s.x !== undefined && `(${Math.round(s.x)},${Math.round(s.y||0)})`} {s.key || ''} {s.button || ''}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* 添加节点工具栏 */}
+            <div className="rec-node-toolbar">
+              <span className="rec-node-toolbar-label">新增节点:</span>
+              {[
+                { type: 'action', icon: '🔵', label: '操作' },
+                { type: 'condition', icon: '🔶', label: '条件' },
+                { type: 'wait', icon: '⏳', label: '等待' },
+                { type: 'loop', icon: '🔄', label: '循环' },
+                { type: 'open_app', icon: '📂', label: '打开应用' },
+              ].map(btn => (
+                <button key={btn.type} className="rec-node-add-btn" onClick={() => handleAddNode(btn.type)}>
+                  {btn.icon} {btn.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="rec-editor-body">
+              {/* 节点树列表 */}
+              <div className="rec-node-list">
+                {nodes.length === 0 ? (
+                  <div className="rec-empty">
+                    <div className="rec-empty-icon">🌳</div>
+                    <div className="rec-empty-text">暂无节点，使用工具栏添加</div>
+                  </div>
+                ) : nodes.map((node, idx) => (
+                  <div
+                    key={node.id}
+                    className={`rec-node-item ${selectedNode === node.id ? 'selected' : ''} ${!node.enabled ? 'disabled' : ''} ${dragNodeIdx === idx ? 'dragging' : ''}`}
+                    draggable
+                    onClick={() => setSelectedNode(node.id)}
+                    onDragStart={() => setDragNodeIdx(idx)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragNodeIdx !== null && dragNodeIdx !== idx) handleMoveNode(dragNodeIdx, idx);
+                      setDragNodeIdx(null);
+                    }}
+                    onDragEnd={() => setDragNodeIdx(null)}
+                  >
+                    <div className="rec-node-drag">⠿</div>
+                    <div className="rec-node-connector" />
+                    <span className="rec-node-icon">{NODE_ICONS[node.node_type] || '❓'}</span>
+                    <div className="rec-node-info">
+                      <div className="rec-node-label">{node.label}</div>
+                      <div className="rec-node-meta">
+                        {NODE_LABELS[node.node_type] || node.node_type}
+                        {node.delay_ms > 0 && ` · ${node.delay_ms}ms`}
+                      </div>
+                    </div>
+                    <div className="rec-node-actions">
+                      <button className={`rec-node-toggle ${node.enabled ? '' : 'off'}`} onClick={e => { e.stopPropagation(); handleToggleNode(node.id); }}>
+                        {node.enabled ? '✓' : '○'}
+                      </button>
+                      <button className="rec-node-del" onClick={e => { e.stopPropagation(); handleDeleteNode(node.id); }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 属性面板 */}
+              {selectedNodeData && (
+                <div className="rec-prop-panel">
+                  <h4>{NODE_ICONS[selectedNodeData.node_type]} {selectedNodeData.label}</h4>
+                  <div className="rec-prop-row">
+                    <label>类型</label>
+                    <span>{NODE_LABELS[selectedNodeData.node_type] || selectedNodeData.node_type}</span>
+                  </div>
+                  <div className="rec-prop-row">
+                    <label>延迟</label>
+                    <span>{selectedNodeData.delay_ms}ms</span>
+                  </div>
+                  <div className="rec-prop-row">
+                    <label>状态</label>
+                    <span>{selectedNodeData.enabled ? '✅ 启用' : '⏸ 禁用'}</span>
+                  </div>
+                  {selectedNodeData.note && (
+                    <div className="rec-prop-row">
+                      <label>备注</label>
+                      <span>{selectedNodeData.note}</span>
+                    </div>
+                  )}
+                  {selectedNodeData.condition && (
+                    <div className="rec-prop-section">
+                      <h5>条件规则</h5>
+                      <div className="rec-prop-row">
+                        <label>规则类型</label>
+                        <span>{selectedNodeData.condition.rule_type}</span>
+                      </div>
+                      <div className="rec-prop-row">
+                        <label>检测目标</label>
+                        <span>{selectedNodeData.condition.target || '未设置'}</span>
+                      </div>
+                      <div className="rec-prop-row">
+                        <label>超时</label>
+                        <span>{selectedNodeData.condition.timeout_ms}ms</span>
+                      </div>
+                    </div>
+                  )}
+                  {selectedNodeData.action?.steps?.length > 0 && (
+                    <div className="rec-prop-section">
+                      <h5>操作步骤 ({selectedNodeData.action.steps.length})</h5>
+                      {selectedNodeData.action.steps.map((s: any, i: number) => (
+                        <div key={i} className="rec-prop-step">
+                          {STEP_ICONS[s.type] || '•'} {s.type} {s.x !== undefined && `(${Math.round(s.x)},${Math.round(s.y||0)})`} {s.key || ''} {s.button || ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     );
   }
@@ -409,7 +482,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
         <div className="rec-control-body">
           {recordingState === 'idle' ? (
             <button className="rec-btn rec-btn-start" onClick={handleStart} disabled={isPlaying}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+              <Circle size={20} fill="currentColor" />
               开始录制
             </button>
           ) : (

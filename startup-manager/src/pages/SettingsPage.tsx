@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
+import { ArrowLeft, Sun, Moon, Monitor, Brain } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -41,6 +42,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [pwdMsg, setPwdMsg] = useState('');
+  // model management
+  const [models, setModels] = useState<{id:string;name:string;size:string;description:string;installed:boolean;downloading:boolean}[]>([]);
+  const [engineRunning, setEngineRunning] = useState(false);
+  const [modelDownloading, setModelDownloading] = useState<string|null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -98,9 +103,56 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         const groups = await res.json();
         if (Array.isArray(groups)) setQqGroups(groups);
       } catch { /* silent */ }
+      // 加载模型列表
+      if (isTauriEnv()) {
+        try {
+          const { invoke: inv } = await import('@tauri-apps/api/core');
+          const status: any = await inv('engine_status');
+          setModels(status.models || []);
+          setEngineRunning(status.engine_running || false);
+        } catch { /* ignore */ }
+      }
     };
     init();
   }, []);
+
+  const refreshModels = async () => {
+    if (!isTauriEnv()) return;
+    try {
+      const { invoke: inv } = await import('@tauri-apps/api/core');
+      const status: any = await inv('engine_status');
+      setModels(status.models || []);
+      setEngineRunning(status.engine_running || false);
+    } catch { /* ignore */ }
+  };
+
+  const handleDownloadModel = async (modelId: string) => {
+    if (!isTauriEnv()) return;
+    setModelDownloading(modelId);
+    try {
+      const { invoke: inv } = await import('@tauri-apps/api/core');
+      await inv('model_pull', { modelId });
+      showStatus('模型下载完成 ✅');
+      await refreshModels();
+    } catch (e: any) {
+      showStatus('下载失败: ' + (e?.toString() || ''));
+    } finally {
+      setModelDownloading(null);
+    }
+  };
+
+  const handleDeleteModel = async (modelId: string) => {
+    if (!isTauriEnv()) return;
+    if (!confirm('确定删除该模型？删除后需重新下载')) return;
+    try {
+      const { invoke: inv } = await import('@tauri-apps/api/core');
+      await inv('model_delete', { modelId });
+      showStatus('模型已删除');
+      await refreshModels();
+    } catch (e: any) {
+      showStatus('删除失败: ' + (e?.toString() || ''));
+    }
+  };
 
   // 自启动切换 — 立即生效
   const handleAutoStartToggle = async (checked: boolean) => {
@@ -237,9 +289,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     <div className="settings-page">
       <div className="settings-header">
         <button className="back-btn" onClick={onBack}>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <ArrowLeft size={20} />
           {t('settings', lang)}
         </button>
         <div className="settings-header-right">
@@ -257,7 +307,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               onClick={() => onThemeModeChange('light')}
             >
               <input type="radio" name="theme" checked={themeMode === 'light'} readOnly />
-              <span className="theme-icon">☀️</span>
+              <span className="theme-icon"><Sun size={18} /></span>
               <span>{t('lightMode', lang)}</span>
             </label>
             <label
@@ -265,7 +315,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               onClick={() => onThemeModeChange('dark')}
             >
               <input type="radio" name="theme" checked={themeMode === 'dark'} readOnly />
-              <span className="theme-icon">🌙</span>
+              <span className="theme-icon"><Moon size={18} /></span>
               <span>{t('darkMode', lang)}</span>
             </label>
             <label
@@ -273,7 +323,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               onClick={() => onThemeModeChange('auto')}
             >
               <input type="radio" name="theme" checked={themeMode === 'auto'} readOnly />
-              <span className="theme-icon">💻</span>
+              <span className="theme-icon"><Monitor size={18} /></span>
               <span>{t('followSystem', lang)}</span>
             </label>
           </div>
@@ -330,6 +380,43 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               </label>
             </>
           )}
+        </div>
+
+        {/* 本地模型管理 */}
+        <div className="settings-section">
+          <h3 className="section-title"><Brain size={18} style={{marginRight:6,verticalAlign:'middle'}} /> 本地模型管理</h3>
+          <div className="setting-item">
+            <span>引擎状态</span>
+            <span className={engineRunning ? 'tag-green' : 'tag-gray'}>
+              {engineRunning ? '✅ 运行中' : '⏹ 未运行'}
+            </span>
+          </div>
+          <div className="model-list">
+            {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (
+              <div key={m.id} className="model-card">
+                <div className="model-card-info">
+                  <div className="model-card-name">{m.name}</div>
+                  <div className="model-card-meta">{m.size} · {m.description}</div>
+                </div>
+                <div className="model-card-actions">
+                  {m.installed ? (
+                    <>
+                      <span className="tag-green">已安装</span>
+                      <button className="model-btn-delete" onClick={() => handleDeleteModel(m.id)}>删除</button>
+                    </>
+                  ) : (
+                    <button
+                      className="model-btn-download"
+                      onClick={() => handleDownloadModel(m.id)}
+                      disabled={modelDownloading !== null}
+                    >
+                      {modelDownloading === m.id ? '下载中...' : '📥 下载'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* 安全设置 */}

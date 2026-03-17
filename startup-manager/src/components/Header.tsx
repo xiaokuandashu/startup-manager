@@ -3,6 +3,7 @@ import { PageType, ToolTab } from '../types';
 import UserDropdown from './UserDropdown';
 import AvatarCropper from './AvatarCropper';
 import { t, Language } from '../i18n';
+import { Search, Star, Moon, Sun, Pin, PinOff, X, Wrench } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -84,7 +85,7 @@ const Header: React.FC<HeaderProps> = ({
             className={`page-tab ${currentPage === 'tools' && !activeTabId ? 'active' : ''}`}
             onClick={() => { onPageChange('tools'); }}
           >
-            🔧 工具
+            <Wrench size={14} style={{marginRight: 4}} /> 工具
           </button>
 
           {/* 已打开的工具标签（浏览器风格，紧跟在工具后面） */}
@@ -111,14 +112,14 @@ const Header: React.FC<HeaderProps> = ({
                 onClick={e => { e.stopPropagation(); onTabLock(tab.id); }}
                 title={tab.locked ? '取消锁定' : '锁定'}
               >
-                {tab.locked ? '📌' : '📍'}
+                {tab.locked ? <Pin size={12} /> : <PinOff size={12} />}
               </button>
               {!tab.locked && (
                 <button
                   className="tool-tab-inline-close"
                   onClick={e => { e.stopPropagation(); onTabClose(tab.id); }}
                 >
-                  ✕
+                  <X size={12} />
                 </button>
               )}
             </div>
@@ -128,9 +129,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="header-right">
           {/* 搜索栏（缩短，放在VIP前面） */}
           <div className="search-bar-compact">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
+            <Search size={14} />
             <input
               placeholder={t('search', lang)}
               value={searchQuery}
@@ -139,14 +138,12 @@ const Header: React.FC<HeaderProps> = ({
           </div>
 
           <button className="vip-badge" onClick={onVip}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-            </svg>
+            <Star size={16} />
             {user?.vipStatus === 'active' ? t('vip', lang) : t('purchaseVip', lang)}
           </button>
 
           <button className="theme-toggle-btn" onClick={onToggleTheme} title={theme === 'light' ? t('darkMode', lang) : t('lightMode', lang)}>
-            {theme === 'light' ? '🌙' : '☀️'}
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
 
           <div className="avatar-wrapper" ref={dropdownRef}>

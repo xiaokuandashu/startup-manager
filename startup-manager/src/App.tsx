@@ -13,6 +13,7 @@ import LoginModal from './components/LoginModal';
 import VipModal from './components/VipModal';
 import UpdateChecker from './components/UpdateChecker';
 import { Language, getCurrentLanguage } from './i18n';
+import { Bot, Clapperboard, Store, ScrollText } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -41,11 +42,11 @@ const syncTitleBarTheme = async (resolvedTheme: 'light' | 'dark', isAuto: boolea
   }
 };
 
-const TOOL_META: Record<ToolType, { title: string; icon: string }> = {
-  ai: { title: 'AI 助手', icon: '🤖' },
-  recording: { title: '操作录制', icon: '🎬' },
-  marketplace: { title: '任务市场', icon: '🏪' },
-  log: { title: '运行日志', icon: '📋' },
+const TOOL_META: Record<ToolType, { title: string; icon: React.ReactNode }> = {
+  ai: { title: 'AI 助手', icon: <Bot size={14} /> },
+  recording: { title: '操作录制', icon: <Clapperboard size={14} /> },
+  marketplace: { title: '任务市场', icon: <Store size={14} /> },
+  log: { title: '运行日志', icon: <ScrollText size={14} /> },
 };
 
 const App: React.FC = () => {

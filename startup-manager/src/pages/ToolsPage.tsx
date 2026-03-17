@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, ReactNode } from 'react';
 import { ToolType } from '../types';
+import { Bot, Clapperboard, Store, ScrollText } from 'lucide-react';
 
 interface ToolCard {
   type: ToolType;
-  icon: string;
+  icon: ReactNode;
   title: string;
   desc: string;
   color: string;
 }
 
 const DEFAULT_TOOLS: ToolCard[] = [
-  { type: 'ai', icon: '🤖', title: 'AI 助手', desc: '智能对话，自然语言创建任务', color: '#3b82f6' },
-  { type: 'recording', icon: '🎬', title: '操作录制', desc: '录制操作流程，一键回放', color: '#8b5cf6' },
-  { type: 'marketplace', icon: '🏪', title: '任务市场', desc: '发现和分享自动化任务', color: '#f59e0b' },
-  { type: 'log', icon: '📋', title: '运行日志', desc: '查看任务执行记录', color: '#10b981' },
+  { type: 'ai', icon: <Bot size={28} />, title: 'AI 助手', desc: '智能对话，自然语言创建任务', color: '#3b82f6' },
+  { type: 'recording', icon: <Clapperboard size={28} />, title: '操作录制', desc: '录制操作流程，一键回放', color: '#8b5cf6' },
+  { type: 'marketplace', icon: <Store size={28} />, title: '任务市场', desc: '发现和分享自动化任务', color: '#f59e0b' },
+  { type: 'log', icon: <ScrollText size={28} />, title: '运行日志', desc: '查看任务执行记录', color: '#10b981' },
 ];
 
 const STORAGE_KEY = 'tools_order';
@@ -28,7 +29,6 @@ function loadOrder(): ToolCard[] {
         const found = DEFAULT_TOOLS.find(t => t.type === type);
         if (found) sorted.push(found);
       }
-      // append any new tools not in saved order
       for (const t of DEFAULT_TOOLS) {
         if (!sorted.find(s => s.type === t.type)) sorted.push(t);
       }
@@ -54,7 +54,7 @@ const ToolsPage: React.FC<ToolsPageProps> = ({ onOpenTool }) => {
   return (
     <div className="tools-page">
       <div className="tools-header">
-        <h3>🔧 工具箱</h3>
+        <h3>工具箱</h3>
         <span className="tools-subtitle">点击打开工具，拖拽调整顺序</span>
       </div>
       <div className="tools-grid">

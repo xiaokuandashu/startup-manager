@@ -14,6 +14,8 @@ interface AddTaskModalProps {
     note: string;
     selectedApp?: string;
     icon?: string;
+    recordingId?: string;
+    recordingName?: string;
   }) => void;
   editingTask?: StartupTask | null;
   lang?: Language;
@@ -65,6 +67,10 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [path, setPath] = useState('');
   const [note, setNote] = useState('');
+  // recording binding
+  const [recordings, setRecordings] = useState<{name: string}[]>([]);
+  const [selectedRecordingId, setSelectedRecordingId] = useState('');
+  const [selectedRecordingName, setSelectedRecordingName] = useState('');
 
   // 编辑模式时预填表单
   useEffect(() => {
@@ -87,8 +93,28 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
           setExecTime(editingTask.executeTime);
         }
       }
+      // recording binding prefill
+      if (editingTask.recordingId) {
+        setSelectedRecordingId(editingTask.recordingId);
+        setSelectedRecordingName(editingTask.recordingName || '');
+      }
     }
   }, [editingTask, isOpen]);
+
+  // Load recordings list
+  useEffect(() => {
+    if (!isOpen) return;
+    const loadRecordings = async () => {
+      if (isTauriEnv()) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const list = await invoke<{name: string}[]>('recording_list');
+          setRecordings(list || []);
+        } catch { /* ignore */ }
+      }
+    };
+    loadRecordings();
+  }, [isOpen]);
 
   // 文件选择对话框
   const selectFilePath = async (type: 'app' | 'exec') => {
@@ -253,6 +279,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
       note,
       selectedApp,
       icon: appIcon,
+      recordingId: selectedRecordingId || undefined,
+      recordingName: selectedRecordingName || undefined,
     });
     resetForm();
     onClose();
@@ -270,6 +298,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
     setHasEndTime(false);
     setSelectedWeekDays([]);
     setSelectedMonthDays([]);
+    setSelectedRecordingId('');
+    setSelectedRecordingName('');
   };
 
   const intervalUnit = cycleType === '每天' ? '天' : cycleType === '每周' ? '周' : cycleType === '每月' ? '月' : '';
@@ -586,6 +616,27 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
                 placeholder={t('inputNote', lang)}
               />
               <span className="char-count">{note.length}/30</span>
+            </div>
+          </div>
+
+          {/* 录制动作绑定 */}
+          <div className="form-row-inline">
+            <label className="form-label-inline">🎬 关联录制</label>
+            <div className="form-input-wrap">
+              <select
+                value={selectedRecordingId}
+                onChange={e => {
+                  const name = e.target.options[e.target.selectedIndex]?.text || '';
+                  setSelectedRecordingId(e.target.value);
+                  setSelectedRecordingName(e.target.value ? name : '');
+                }}
+                className="recording-select"
+              >
+                <option value="">不关联</option>
+                {recordings.map(r => (
+                  <option key={r.name} value={r.name}>{r.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 

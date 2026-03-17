@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import { Language } from '../i18n';
+import { ChevronDown, Send, Loader2 } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -359,10 +360,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       <div className="ai-model-bar">
         <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
           <span className={`ai-model-dot ${engineRunning ? '' : 'offline'}`} />
-          当前模型：{models.find(m => m.id === activeModel)?.name || '📐 本地规则引擎'}
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginLeft: 4 }}>
-            <path d="M7 10l5 5 5-5z"/>
-          </svg>
+          当前模型：{models.find(m => m.id === activeModel)?.name || '本地规则引擎'}
+          <ChevronDown size={14} style={{ marginLeft: 4 }} />
         </button>
       </div>
 
@@ -510,13 +509,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           disabled={!input.trim() || isLoading}
         >
           {isLoading ? (
-            <svg className="ai-send-loading" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="20"/>
-            </svg>
+            <Loader2 size={20} className="ai-send-loading" />
           ) : (
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
+            <Send size={20} />
           )}
         </button>
       </div>

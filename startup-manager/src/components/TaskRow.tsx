@@ -11,6 +11,7 @@ interface TaskRowProps {
   onCopy: (id: string) => void;
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
+  onUpdateRecording?: (id: string, recordingId?: string, recordingName?: string) => void;
   isSelectMode: boolean;
   isSelected: boolean;
   onSelect: (id: string) => void;
@@ -25,11 +26,13 @@ const extColorMap: Record<string, string> = {
 };
 
 const TaskRow: React.FC<TaskRowProps> = ({
-  task, onToggle, onEdit, onCopy, onDelete, onExport,
+  task, onToggle, onEdit, onCopy, onDelete, onExport, onUpdateRecording,
   isSelectMode, isSelected, onSelect, lang = 'zh',
 }) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const [showRecPicker, setShowRecPicker] = useState(false);
+  const [recList, setRecList] = useState<{name:string}[]>([]);
 
   const ext = task.fileExt || '.app';
   const bgColor = extColorMap[ext] || '#42A5F5';
@@ -50,12 +53,66 @@ const TaskRow: React.FC<TaskRowProps> = ({
           <span className="file-ext-badge" style={{ backgroundColor: bgColor }}>{ext}</span>
         )}
       </div>
-      {/* 任务名称 */}
+      {/* 任务名称 + 录制绑定 */}
       <div className="task-cell task-name-cell" title={task.name}>
-        {task.name}
-        {task.recordingId && (
-          <span className="task-rec-badge" title={`录制: ${task.recordingName || task.recordingId}`}>🎬</span>
-        )}
+        <span>{task.name}</span>
+        <span className="task-rec-area">
+          {task.recordingId ? (
+            <>
+              <span
+                className="task-rec-badge clickable"
+                title="点击更换录制"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const list = await invoke<{name:string}[]>('recording_list');
+                    setRecList(list || []);
+                  } catch { setRecList([]); }
+                  setShowRecPicker(!showRecPicker);
+                }}
+              >
+                🎬 {task.recordingName || task.recordingId}
+              </span>
+              <span
+                className="task-rec-unbind"
+                title="解除绑定"
+                onClick={(e) => { e.stopPropagation(); onUpdateRecording?.(task.id, undefined, undefined); }}
+              >✕</span>
+            </>
+          ) : (
+            <span
+              className="task-rec-add"
+              title="关联录制"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  const list = await invoke<{name:string}[]>('recording_list');
+                  setRecList(list || []);
+                } catch { setRecList([]); }
+                setShowRecPicker(!showRecPicker);
+              }}
+            >+ 录制</span>
+          )}
+          {showRecPicker && (
+            <div className="rec-picker-dropdown">
+              {recList.length === 0 ? (
+                <div className="rec-picker-empty">没有录制</div>
+              ) : recList.map(r => (
+                <div
+                  key={r.name}
+                  className="rec-picker-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateRecording?.(task.id, r.name, r.name);
+                    setShowRecPicker(false);
+                  }}
+                >{r.name}</div>
+              ))}
+            </div>
+          )}
+        </span>
       </div>
       {/* 任务类型 */}
       <div className="task-cell" title={task.taskType}>{task.taskType}</div>

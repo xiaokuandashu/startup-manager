@@ -530,6 +530,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
     name: string; taskType: string; timeType: string;
     executeTime: string; path: string; note: string;
     selectedApp?: string; icon?: string;
+    recordingId?: string; recordingName?: string;
   }) => {
     if (editingTask) {
       setTasks(prev => prev.filter(t => t.id !== editingTask.id));
@@ -551,6 +552,8 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
       note: formData.note,
       statusText: '等待执行',
       fileExt: formData.taskType === '打开应用' ? (isMac ? '.app' : '.exe') : formData.taskType === '打开执行文件' ? (isMac ? '.sh' : '.bat') : '.exe',
+      recordingId: formData.recordingId,
+      recordingName: formData.recordingName,
     };
     setTasks(prev => [...prev, newTask]);
     setEditingTask(null);
@@ -568,6 +571,12 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
       fileExt: newTask.fileExt,
       icon: newTask.icon,
     });
+  };
+
+  const handleUpdateRecording = (id: string, recordingId?: string, recordingName?: string) => {
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, recordingId, recordingName } : t
+    ));
   };
 
   return (
@@ -595,6 +604,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         onCopy={handleCopy}
         onDelete={handleDelete}
         onExport={handleExport}
+        onUpdateRecording={handleUpdateRecording}
         onBatchDelete={handleBatchDelete}
         onBatchExport={handleBatchExport}
         lang={lang}

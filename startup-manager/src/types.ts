@@ -1,3 +1,5 @@
+import React from 'react';
+
 export interface StartupTask {
   id: string;
   name: string;
@@ -43,6 +45,6 @@ export interface ToolTab {
   id: string;
   type: ToolType;
   title: string;
-  icon: string;
+  icon: React.ReactNode;
   locked: boolean;
 }

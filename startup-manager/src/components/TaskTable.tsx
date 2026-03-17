@@ -16,6 +16,7 @@ interface TaskTableProps {
   onCopy: (id: string) => void;
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
+  onUpdateRecording?: (id: string, recordingId?: string, recordingName?: string) => void;
   onBatchDelete: () => void;
   onBatchExport: () => void;
   lang?: Language;
@@ -34,6 +35,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
   onCopy,
   onDelete,
   onExport,
+  onUpdateRecording,
   onBatchDelete,
   onBatchExport,
   lang = 'zh',
@@ -131,6 +133,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
                 onCopy={onCopy}
                 onDelete={onDelete}
                 onExport={onExport}
+                onUpdateRecording={onUpdateRecording}
                 isSelectMode={isSelectMode}
                 isSelected={selectedTasks.includes(task.id)}
                 onSelect={onSelect}

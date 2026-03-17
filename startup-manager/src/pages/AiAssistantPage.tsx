@@ -133,6 +133,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [engineInstalled, setEngineInstalled] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number; daily_limit: number; has_custom_key: boolean}>({remaining: 100, daily_limit: 100, has_custom_key: false});
+  const [showKeyPopup, setShowKeyPopup] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  const [keySaving, setKeySaving] = useState(false);
+  const [keyMsg, setKeyMsg] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -290,7 +294,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               } catch {
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
-              // 刷新剩余次数
+              // 刷新剩余次数 — 先乐观递减，再从服务器刷新
+              setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, prev.remaining - 1) }));
               loadDeepseekUsage();
             } else {
               const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
@@ -521,7 +526,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 setShowModelPanel(false);
               } else {
                 setShowModelPanel(false);
-                alert('请先在 “设置 → DeepSeek 密钥” 中配置您的 API Key');
+                setShowKeyPopup(true);
+                setKeyInput('');
+                setKeyMsg('');
               }
             }}
           >
@@ -650,6 +657,89 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           )}
         </button>
       </div>
+
+      {/* DeepSeek 密钥配置弹窗 */}
+      {showKeyPopup && (
+        <div className="modal-overlay" onClick={() => setShowKeyPopup(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600 }}>
+              <Key size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              配置 DeepSeek API 密钥
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+              配置您自己的 API Key 后即可无限制使用 DeepSeek 模型
+            </p>
+            <input
+              type="password"
+              value={keyInput}
+              onChange={e => setKeyInput(e.target.value)}
+              placeholder="请输入 sk-... 开头的密钥"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid #e5e7eb',
+                fontSize: 14,
+                outline: 'none',
+                boxSizing: 'border-box',
+                marginBottom: 12,
+              }}
+            />
+            {keyMsg && (
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: 6,
+                marginBottom: 12,
+                fontSize: 12,
+                background: keyMsg.includes('✅') ? '#f0fdf4' : '#fef2f2',
+                color: keyMsg.includes('✅') ? '#16a34a' : '#dc2626',
+              }}>
+                {keyMsg}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                className="modal-btn-cancel"
+                onClick={() => setShowKeyPopup(false)}
+              >
+                取消
+              </button>
+              <button
+                className="modal-btn-confirm"
+                disabled={keySaving || !keyInput.trim()}
+                onClick={async () => {
+                  setKeySaving(true);
+                  setKeyMsg('');
+                  try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('https://bt.aacc.fun:8888/api/auth/deepseek-key', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ deepseek_key: keyInput.trim() }),
+                    });
+                    if (res.ok) {
+                      setKeyMsg('✅ 密钥配置成功');
+                      loadDeepseekUsage();
+                      setTimeout(() => {
+                        setShowKeyPopup(false);
+                        setActiveModel('deepseek_user');
+                      }, 800);
+                    } else {
+                      const data = await res.json().catch(() => ({ error: '保存失败' }));
+                      setKeyMsg(data.error || '保存失败');
+                    }
+                  } catch {
+                    setKeyMsg('网络错误，请检查网络连接');
+                  }
+                  setKeySaving(false);
+                }}
+              >
+                {keySaving ? '保存中...' : '保存密钥'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

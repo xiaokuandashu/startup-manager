@@ -388,16 +388,16 @@ body {
 .task-rec-unbind:hover { opacity: 1; }
 .task-rec-add { font-size: 11px; cursor: pointer; color: #0091FF; opacity: 0.6; }
 .task-rec-add:hover { opacity: 1; }
-.rec-picker-dropdown { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--bg-card, #fff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 140px; max-height: 160px; overflow-y: auto; }
+.rec-picker-dropdown { position: absolute; top: 100%; left: 0; z-index: 99999; background: var(--bg-card, #fff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 140px; max-height: 160px; overflow-y: auto; }
 .rec-picker-item { padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text-primary); }
 .rec-picker-item:hover { background: rgba(0,145,255,0.08); color: #0091FF; }
 .rec-picker-empty { padding: 10px; font-size: 12px; color: var(--text-secondary); text-align: center; }
 .recording-select { width: 100%; padding: 7px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-card, #fff); font-size: 13px; color: var(--text-primary); }
 .task-path-cell { max-width: 120px; align-self: center; }
 .task-note-cell { align-self: center; }
-.task-status-cell { justify-content: flex-end; text-align: right; }
-.task-toggle-cell { justify-content: flex-end; text-align: right; }
-.task-actions-cell { justify-content: flex-end; text-align: right; }
+.task-status-cell { justify-content: flex-start; text-align: left; }
+.task-toggle-cell { justify-content: flex-start; text-align: left; }
+.task-actions-cell { justify-content: flex-start; text-align: left; }
 
 .file-ext-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -416,8 +416,8 @@ body {
 .status-tag.error { color: var(--accent-red); }
 .status-tag.pending { color: var(--text-muted); }
 
-.task-status-cell { display: flex; align-items: center; align-self: center; justify-content: flex-end; }
-.task-toggle-cell { display: flex; align-items: center; justify-content: flex-end; }
+.task-status-cell { display: flex; align-items: center; align-self: center; justify-content: flex-start; }
+.task-toggle-cell { display: flex; align-items: center; justify-content: flex-start; }
 
 .plan-limited {
   position: absolute; top: 0; right: 0;
@@ -426,7 +426,7 @@ body {
   border-radius: 0 var(--radius-sm) 0 var(--radius-sm);
 }
 
-.task-actions-cell { display: flex; align-items: center; gap: 8px; overflow: visible; position: relative; text-align: right; justify-content: flex-end; }
+.task-actions-cell { display: flex; align-items: center; gap: 8px; overflow: visible; position: relative; text-align: left; justify-content: flex-start; }
 .action-link {
   border: none; background: none;
   font-size: 13px; color: var(--text-secondary);

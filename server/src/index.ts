@@ -118,7 +118,10 @@ app.use('/api/admin', authMiddleware, adminMiddleware, adminRoutes);
 app.get('/api/deepseek/usage', authMiddleware, (req: any, res) => {
   const userId = req.userId;
   const db = require('./db').getDB();
-  const today = new Date().toISOString().split('T')[0];
+  const offset = 8 * 60 * 60 * 1000;
+  const now = new Date(Date.now() + offset);
+  const today = now.toISOString().split('T')[0];
+  
   const usage = db.prepare('SELECT call_count FROM user_api_usage WHERE user_id = ? AND date = ?').get(userId, today) as any;
   const limitRow = db.prepare("SELECT value FROM system_config WHERE key = 'deepseek_daily_limit'").get() as any;
   const dailyLimit = parseInt(limitRow?.value || '100');
@@ -149,35 +152,44 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
   let baseUrl: string;
   let modelName: string;
 
-  if (hasCustomKey) {
-    // 2d: 用户自定义 key，不计次，不限额
+  // 根据前端请求的模型标识严格区分逻辑
+  if (model === 'deepseek_user') {
+    // 强制走自有密钥逻辑
+    if (!hasCustomKey) {
+      return res.status(403).json({ error: '未配置 DeepSeek 密钥，请在配置中填入您的专属密钥。' });
+    }
     apiKey = user.deepseek_key;
     const baseUrlRow = db.prepare("SELECT value FROM system_config WHERE key = 'deepseek_base_url'").get() as any;
     baseUrl = baseUrlRow?.value || 'https://api.deepseek.com';
-    modelName = model || 'deepseek-chat';
+    modelName = 'deepseek-chat';
   } else {
-    // 2c: 全局 key，检查限额
+    // 强制走云端官方分配额度逻辑 (deepseek_cloud)
     const configRows = db.prepare("SELECT key, value FROM system_config WHERE key LIKE 'deepseek_%'").all() as any[];
     const config: Record<string, string> = {};
     configRows.forEach((c: any) => { config[c.key] = c.value; });
 
     apiKey = config.deepseek_api_key || '';
     if (!apiKey) {
-      return res.status(503).json({ error: 'DeepSeek API 密钥未配置，请联系管理员' });
+      return res.status(503).json({ error: 'DeepSeek API 官方密钥未配置，请联系管理员' });
     }
 
     baseUrl = config.deepseek_base_url || 'https://api.deepseek.com';
-    modelName = model || config.deepseek_model || 'deepseek-chat';
+    modelName = config.deepseek_model || 'deepseek-chat';
 
-    // 检查每日限额
+    // 检查每日限额 (云端强制计费)
     const dailyLimit = parseInt(config.deepseek_daily_limit || '100');
-    const today = new Date().toISOString().split('T')[0];
+    // 根据需求修正：如果是服务器在中国东八区时间为准
+    const now = new Date();
+    // 换算成中国东八区时间 (UTC+8)
+    const utc8Date = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+    const today = utc8Date.toISOString().split('T')[0];
+    
     const usage = db.prepare('SELECT call_count FROM user_api_usage WHERE user_id = ? AND date = ?').get(userId, today) as any;
     const callCount = usage?.call_count || 0;
 
     if (callCount >= dailyLimit) {
       return res.status(429).json({
-        error: `今日调用次数已达上限 (${dailyLimit}次)。可在设置中配置自己的 DeepSeek 密钥，使用无限制。`,
+        error: `官方每日调用次数已达上限 (${dailyLimit}次)。可在下面选择"DeepSeek (自有密钥)"无限制使用。`,
         call_count: callCount,
         daily_limit: dailyLimit,
       });
@@ -210,11 +222,22 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
 
     // 记录调用次数（仅全局 key 时计数）
     if (!hasCustomKey) {
-      const today = new Date().toISOString().split('T')[0];
-      db.prepare(`
-        INSERT INTO user_api_usage (user_id, date, call_count) VALUES (?, ?, 1)
-        ON CONFLICT(user_id, date) DO UPDATE SET call_count = call_count + 1
-      `).run(userId, today);
+      try {
+        // 使用东八区时间记录
+        const offset = 8 * 60 * 60 * 1000;
+        const now = new Date(Date.now() + offset);
+        const today = now.toISOString().split('T')[0];
+        
+        db.prepare(`
+          INSERT INTO user_api_usage (user_id, date, call_count) VALUES (?, ?, 1)
+          ON CONFLICT(user_id, date) DO UPDATE SET call_count = call_count + 1
+        `).run(userId, today);
+        console.log(`[DeepSeek] 计费成功 user=${userId} today=${today}`);
+      } catch (dbErr: any) {
+        console.log(`[DeepSeek] API使用记录失败: ${dbErr.message}`);
+      }
+    } else {
+      console.log(`[DeepSeek] 拥有自有Key，不计入服务端次数 user=${userId}`);
     }
 
     res.json(data);

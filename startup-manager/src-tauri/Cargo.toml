@@ -29,7 +29,7 @@ base64 = "0.22"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-fs = "2"
-rdev = "0.5"
+rdev = { path = "./rdev-local" }
 enigo = { version = "0.2", features = ["serde"] }
 lazy_static = "1.4"
 reqwest = { version = "0.12", features = ["json"] }

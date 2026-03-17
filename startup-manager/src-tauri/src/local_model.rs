@@ -336,10 +336,13 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         return Err(format!("模型文件不存在，请先下载: {}", model.name));
     }
 
+    let log_file_path = format!("{}/llama-server.log", models_dir());
+    let log_file = std::fs::File::create(&log_file_path).unwrap_or_else(|_| std::fs::File::create("/tmp/llama-server.log").unwrap());
+
     // 使用内置的 llama-server 二进制
     let bin = resolve_sidecar_path()?;
 
-    let child = Command::new(&bin)
+    let mut child = Command::new(&bin)
         .args([
             "--model", &model_path,
             "--host", LLAMA_HOST,
@@ -348,10 +351,10 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
             "--n-predict", "512",
             "--threads", "4",
         ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(log_file.try_clone().unwrap())
+        .stderr(log_file)
         .spawn()
-        .map_err(|e| format!("启动引擎失败: {}", e))?;
+        .map_err(|e| format!("启动引擎进程失败: {}", e))?;
 
     let pid = child.id();
     if let Ok(mut p) = LLAMA_PID.lock() {
@@ -368,6 +371,11 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     for _ in 0..60 {
+        if let Ok(Some(status)) = child.try_wait() {
+            let log_content = std::fs::read_to_string(&log_file_path).unwrap_or_default();
+            return Err(format!("引擎进程已异常退出 ({})。日志: {}", status, log_content));
+        }
+
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         match client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT)).send().await {
             Ok(r) if r.status().is_success() => {
@@ -377,8 +385,8 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         }
     }
 
-    // 30秒超时，引擎可能在加载中，不算压死错误
-    Ok(())
+    // 30秒超时
+    Err("引擎启动超时（30秒未响应）".to_string())
 }
 
 /// 停止 llama-server
@@ -439,7 +447,8 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
     "schedule_type": "startup/once/daily/weekly/monthly",
     "schedule_time": "HH:MM",
     "enabled": true,
-    "confidence": 0.0-1.0
+    "confidence": 0.0-1.0,
+    "recording_name": "录制动作名称（如果有）"
   }]
 }
 

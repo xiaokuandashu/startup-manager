@@ -599,7 +599,7 @@ fn ai_parse_intent(input: String) -> ai_engine::AiResponse {
 async fn ai_cloud_parse(input: String) -> Result<String, String> {
     let api_key = "sk-3d0295d2c9084d8ba7681135c586c505";
     let system_prompt = r#"你是自启精灵的AI助手，帮用户创建桌面自动化任务。根据用户输入，返回JSON格式的任务。
-返回格式：{"message":"给用户的回复","response_type":"task_created","tasks":[{"task_name":"任务名","task_type":"application/script/path","path":"应用或脚本路径","schedule_type":"startup/once/daily/weekly/monthly","schedule_time":"HH:MM","schedule_days":[],"enabled":true,"confidence":0.9}]}
+返回格式：{"message":"给用户的回复","response_type":"task_created","tasks":[{"task_name":"任务名","task_type":"application/script/path","path":"应用或脚本路径","schedule_type":"startup/once/daily/weekly/monthly","schedule_time":"HH:MM","schedule_days":[],"enabled":true,"confidence":0.9,"recording_name":"录制动作名称"}]}
 如果用户的问题与任务无关,返回：{"message":"你的回答","response_type":"info","tasks":[]}
 只返回JSON,不要其他内容。"#;
 

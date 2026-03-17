@@ -293,10 +293,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               // 刷新剩余次数
               loadDeepseekUsage();
             } else {
-              response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
+              const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
+              response = { message: `❌ DeepSeek 云端错误: ${errData.error || proxyRes.statusText}`, response_type: 'error', tasks: [] };
             }
-          } catch {
-            response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
+          } catch (e: any) {
+            response = { message: `❌ DeepSeek 云端连接失败: ${e?.message || '网络错误，请检查服务器是否运行'}`, response_type: 'error', tasks: [] };
           }
         } else if (activeModel === 'deepseek_user') {
           // DeepSeek 自有密钥（通过服务端代理 API，自动使用用户密钥）

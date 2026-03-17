@@ -324,7 +324,7 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
 }
 
 /// 启动内置 llama-server 加载指定模型
-pub fn start_engine(model_id: &str) -> Result<(), String> {
+pub async fn start_engine(model_id: &str) -> Result<(), String> {
     stop_engine();
 
     let models = available_models();
@@ -361,6 +361,23 @@ pub fn start_engine(model_id: &str) -> Result<(), String> {
         *m = model_id.to_string();
     }
 
+    // 等待引擎就绪（轮询 /health 最多 30 秒）
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        match client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT)).send().await {
+            Ok(r) if r.status().is_success() => {
+                return Ok(());
+            }
+            _ => { continue; }
+        }
+    }
+
+    // 30秒超时，引擎可能在加载中，不算压死错误
     Ok(())
 }
 
@@ -386,12 +403,25 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    // 先检查引擎是否在运行
+    // 先检查引擎是否在运行，如果还在加载则等待重试
     let health = client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT))
         .send().await;
     match health {
         Err(_) => return Err("推理引擎未运行，请先在 AI 助手页面启动引擎并加载模型".into()),
-        Ok(r) if !r.status().is_success() => return Err("推理引擎正在加载模型，请稍等几秒后重试".into()),
+        Ok(r) if !r.status().is_success() => {
+            // 引擎还在加载，等待最多 15 秒
+            let mut ready = false;
+            for _ in 0..30 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                match client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT)).send().await {
+                    Ok(r2) if r2.status().is_success() => { ready = true; break; }
+                    _ => { continue; }
+                }
+            }
+            if !ready {
+                return Err("推理引擎正在加载模型，已等待 15 秒仍未就绪，请稍后重试".into());
+            }
+        }
         _ => {}
     }
 

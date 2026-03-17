@@ -833,8 +833,8 @@ fn model_delete(model_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn engine_start(model_id: String) -> Result<(), String> {
-    local_model::start_engine(&model_id)
+async fn engine_start(model_id: String) -> Result<(), String> {
+    local_model::start_engine(&model_id).await
 }
 
 #[tauri::command]

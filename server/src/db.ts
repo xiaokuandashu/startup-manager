@@ -196,6 +196,34 @@ export function initDB() {
     )
   `);
 
+  // ======== Phase G: 系统配置表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // ======== Phase G: 用户 API 调用统计表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_api_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      call_count INTEGER DEFAULT 0,
+      UNIQUE(user_id, date)
+    )
+  `);
+
+  // ======== Phase G: 字段迁移 ========
+  // activation_codes 新增 credits 字段
+  try { db.exec('ALTER TABLE activation_codes ADD COLUMN credits INTEGER DEFAULT 0'); } catch {}
+  // plans 新增 credits 字段
+  try { db.exec('ALTER TABLE plans ADD COLUMN credits INTEGER DEFAULT 0'); } catch {}
+  // users 新增 deepseek_key 字段
+  try { db.exec('ALTER TABLE users ADD COLUMN deepseek_key TEXT'); } catch {}
+
   // 初始化默认管理员
   const adminExists = db.prepare('SELECT id FROM admin WHERE username = ?').get('admin');
   if (!adminExists) {
@@ -204,15 +232,31 @@ export function initDB() {
     console.log('[数据库] 已创建默认管理员 admin/admin');
   }
 
-  // 初始化默认套餐
+  // 初始化默认套餐（含积分）
   const planCount = db.prepare('SELECT COUNT(*) as count FROM plans').get() as { count: number };
   if (planCount.count === 0) {
-    const insertPlan = db.prepare('INSERT INTO plans (name, duration, original_price, actual_price, is_limited) VALUES (?, ?, ?, ?, ?)');
-    insertPlan.run('一个月会员', '1month', 9.9, 6.8, 0);
-    insertPlan.run('三个月会员', '3month', 29.7, 16.6, 0);
-    insertPlan.run('一年会员', '1year', 118.8, 36.9, 0);
-    insertPlan.run('永久会员', 'permanent', 399.9, 66.6, 1);
+    const insertPlan = db.prepare('INSERT INTO plans (name, duration, original_price, actual_price, is_limited, credits) VALUES (?, ?, ?, ?, ?, ?)');
+    insertPlan.run('一个月会员', '1month', 9.9, 6.8, 0, 30);
+    insertPlan.run('三个月会员', '3month', 29.7, 16.6, 0, 100);
+    insertPlan.run('一年会员', '1year', 118.8, 36.9, 0, 500);
+    insertPlan.run('永久会员', 'permanent', 399.9, 66.6, 1, 9999);
     console.log('[数据库] 已初始化默认套餐');
+  } else {
+    // 更新已有套餐的积分默认值（如果为0）
+    db.prepare("UPDATE plans SET credits = 30 WHERE duration = '1month' AND credits = 0").run();
+    db.prepare("UPDATE plans SET credits = 100 WHERE duration = '3month' AND credits = 0").run();
+    db.prepare("UPDATE plans SET credits = 500 WHERE duration = '1year' AND credits = 0").run();
+    db.prepare("UPDATE plans SET credits = 9999 WHERE duration = 'permanent' AND credits = 0").run();
+  }
+
+  // 初始化系统配置
+  const configCount = db.prepare('SELECT COUNT(*) as count FROM system_config').get() as { count: number };
+  if (configCount.count === 0) {
+    db.prepare("INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)").run('deepseek_api_key', '');
+    db.prepare("INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)").run('deepseek_daily_limit', '100');
+    db.prepare("INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)").run('deepseek_base_url', 'https://api.deepseek.com');
+    db.prepare("INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)").run('deepseek_model', 'deepseek-chat');
+    console.log('[数据库] 已初始化系统配置');
   }
 
   // 生成模拟激活码

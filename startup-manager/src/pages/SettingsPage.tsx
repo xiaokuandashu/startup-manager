@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen, Key, Coins } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -47,6 +47,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [engineRunning, setEngineRunning] = useState(false);
   const [modelDownloading, setModelDownloading] = useState<string|null>(null);
   const [modelsDir, setModelsDir] = useState<string>('');
+  // credits & deepseek key
+  const [creditsBalance, setCreditsBalance] = useState(0);
+  const [hasDeepseekKey, setHasDeepseekKey] = useState(false);
+  const [deepseekKeyMasked, setDeepseekKeyMasked] = useState('');
+  const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -114,6 +120,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           setModelsDir(status.models_dir || '');
         } catch { /* ignore */ }
       }
+      // 加载用户积分和 DeepSeek Key 状态
+      try {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const res = await fetch('https://bt.aacc.fun:8888/api/activation/profile', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const profile = await res.json();
+            setCreditsBalance(profile.credits?.balance || 0);
+            setHasDeepseekKey(profile.hasDeepseekKey || false);
+            setDeepseekKeyMasked(profile.deepseekKeyMasked || '');
+          }
+        }
+      } catch { /* silent */ }
     };
     init();
   }, []);
@@ -445,6 +466,71 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             ))}
           </div>
         </div>
+
+        {/* 积分 & DeepSeek Key */}
+        {user && (
+          <div className="settings-section">
+            <h3 className="section-title"><Coins size={18} style={{marginRight:6,verticalAlign:'middle'}} /> 积分 & DeepSeek</h3>
+            <div className="setting-item">
+              <span>积分余额</span>
+              <span className="tag-green" style={{fontWeight:600}}>{creditsBalance}</span>
+            </div>
+            <div className="setting-item">
+              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {hasDeepseekKey && !showKeyInput && (
+                  <>
+                    <span className="tag-green" style={{fontSize:12}}>{deepseekKeyMasked}</span>
+                    <button className="action-link" style={{fontSize:12}} onClick={() => {
+                      setShowKeyInput(true); setDeepseekKeyInput('');
+                    }}>更换</button>
+                    <button className="action-link" style={{fontSize:12,color:'var(--danger)'}} onClick={async () => {
+                      try {
+                        const token = localStorage.getItem('auth_token');
+                        await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
+                          method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ key: '' }),
+                        });
+                        setHasDeepseekKey(false); setDeepseekKeyMasked('');
+                        showStatus('DeepSeek 密钥已清除 ✅');
+                      } catch (e) { showStatus(`清除失败: ${e}`); }
+                    }}>清除</button>
+                  </>
+                )}
+                {(!hasDeepseekKey || showKeyInput) && (
+                  <>
+                    <input
+                      type="password"
+                      placeholder="sk-..."
+                      value={deepseekKeyInput}
+                      onChange={e => setDeepseekKeyInput(e.target.value)}
+                      style={{ width: 200, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)' }}
+                    />
+                    <button className="action-link" style={{fontSize:12}} onClick={async () => {
+                      if (!deepseekKeyInput.trim()) return;
+                      try {
+                        const token = localStorage.getItem('auth_token');
+                        await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
+                          method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ key: deepseekKeyInput.trim() }),
+                        });
+                        setHasDeepseekKey(true);
+                        const k = deepseekKeyInput.trim();
+                        setDeepseekKeyMasked(k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****');
+                        setDeepseekKeyInput(''); setShowKeyInput(false);
+                        showStatus('DeepSeek 密钥已保存 ✅');
+                      } catch (e) { showStatus(`保存失败: ${e}`); }
+                    }}>保存</button>
+                    {showKeyInput && <button className="action-link" style={{fontSize:12}} onClick={() => setShowKeyInput(false)}>取消</button>}
+                  </>
+                )}
+              </div>
+            </div>
+            <div style={{fontSize:11,color:'var(--text-secondary)',padding:'4px 16px'}}>
+              配置自己的 DeepSeek API Key 后，使用云端模型无每日次数限制，消耗您自己的 token。
+            </div>
+          </div>
+        )}
 
         {/* 安全设置 */}
         <div className="settings-section">

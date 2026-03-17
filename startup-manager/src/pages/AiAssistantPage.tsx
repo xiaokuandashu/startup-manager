@@ -132,13 +132,29 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineInstalled, setEngineInstalled] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
+  const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number; daily_limit: number; has_custom_key: boolean}>({remaining: 100, daily_limit: 100, has_custom_key: false});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 加载模型列表
   useEffect(() => {
     loadModels();
+    loadDeepseekUsage();
   }, []);
+
+  const loadDeepseekUsage = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+      const res = await fetch('https://bt.aacc.fun:8888/api/deepseek/usage', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDeepseekUsage(data);
+      }
+    } catch { /* silent */ }
+  };
 
   const loadModels = async () => {
     try {
@@ -246,14 +262,39 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             }
           }
         } else if (activeModel === 'deepseek_cloud') {
-          // DeepSeek 云端
+          // DeepSeek 云端（通过服务端代理 API）
           setMessages(prev => prev.map(m =>
             m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端...' } : m
           ));
           try {
-            const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
-            const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            response = JSON.parse(cleanJson) as AiResponse;
+            const token = localStorage.getItem('auth_token');
+            const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                messages: [{ role: 'user', content: text }],
+              }),
+            });
+            if (proxyRes.status === 429) {
+              const errData = await proxyRes.json();
+              response = { message: `⚠️ ${errData.error}`, response_type: 'error', tasks: [] };
+            } else if (proxyRes.status === 503) {
+              const errData = await proxyRes.json();
+              response = { message: `⚠️ ${errData.error}`, response_type: 'error', tasks: [] };
+            } else if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              const content = data.choices?.[0]?.message?.content || '';
+              try {
+                const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                response = JSON.parse(cleanJson) as AiResponse;
+              } catch {
+                response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
+              }
+              // 刷新剩余次数
+              loadDeepseekUsage();
+            } else {
+              response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
+            }
           } catch {
             response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
           }
@@ -408,6 +449,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   }
                   setActiveModel(model.id);
                   setShowModelPanel(false);
+                  if (model.id === 'deepseek_cloud') loadDeepseekUsage();
                 } else if (!model.downloading && downloadingModel !== model.id) {
                   handlePullModel(model.id);
                 }
@@ -415,7 +457,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             >
               <div className="ai-model-item-left">
                 <div className="ai-model-item-name">{model.name}</div>
-                <div className="ai-model-item-desc">{model.description}</div>
+                <div className="ai-model-item-desc">
+                  {model.description}
+                  {model.id === 'deepseek_cloud' && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: deepseekUsage.has_custom_key ? '#22c55e' : '#f59e0b' }}>
+                      {deepseekUsage.has_custom_key ? '· 自有密钥 · 无限制' : `· 剩余 ${deepseekUsage.remaining}/${deepseekUsage.daily_limit} 次`}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="ai-model-item-right">
                 {model.installed ? (

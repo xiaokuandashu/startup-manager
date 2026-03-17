@@ -114,6 +114,116 @@ app.use('/api/credits', authMiddleware, creditsRoutes);
 // 需要管理员认证的路由
 app.use('/api/admin', authMiddleware, adminMiddleware, adminRoutes);
 
+// ======== 2c/2d: DeepSeek 代理 API ========
+app.get('/api/deepseek/usage', authMiddleware, (req: any, res) => {
+  const userId = req.userId;
+  const db = require('./db').getDB();
+  const today = new Date().toISOString().split('T')[0];
+  const usage = db.prepare('SELECT call_count FROM user_api_usage WHERE user_id = ? AND date = ?').get(userId, today) as any;
+  const limitRow = db.prepare("SELECT value FROM system_config WHERE key = 'deepseek_daily_limit'").get() as any;
+  const dailyLimit = parseInt(limitRow?.value || '100');
+  const callCount = usage?.call_count || 0;
+
+  // 检查用户是否有自定义 key
+  const user = db.prepare('SELECT deepseek_key FROM users WHERE id = ?').get(userId) as any;
+  const hasCustomKey = !!user?.deepseek_key;
+
+  res.json({
+    call_count: callCount,
+    daily_limit: dailyLimit,
+    remaining: hasCustomKey ? -1 : Math.max(0, dailyLimit - callCount), // -1 = 无限
+    has_custom_key: hasCustomKey,
+  });
+});
+
+app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
+  const userId = req.userId;
+  const { messages, model } = req.body;
+  const db = require('./db').getDB();
+
+  // 获取用户自定义 key
+  const user = db.prepare('SELECT deepseek_key FROM users WHERE id = ?').get(userId) as any;
+  const hasCustomKey = !!user?.deepseek_key;
+
+  let apiKey: string;
+  let baseUrl: string;
+  let modelName: string;
+
+  if (hasCustomKey) {
+    // 2d: 用户自定义 key，不计次，不限额
+    apiKey = user.deepseek_key;
+    const baseUrlRow = db.prepare("SELECT value FROM system_config WHERE key = 'deepseek_base_url'").get() as any;
+    baseUrl = baseUrlRow?.value || 'https://api.deepseek.com';
+    modelName = model || 'deepseek-chat';
+  } else {
+    // 2c: 全局 key，检查限额
+    const configRows = db.prepare("SELECT key, value FROM system_config WHERE key LIKE 'deepseek_%'").all() as any[];
+    const config: Record<string, string> = {};
+    configRows.forEach((c: any) => { config[c.key] = c.value; });
+
+    apiKey = config.deepseek_api_key || '';
+    if (!apiKey) {
+      return res.status(503).json({ error: 'DeepSeek API 密钥未配置，请联系管理员' });
+    }
+
+    baseUrl = config.deepseek_base_url || 'https://api.deepseek.com';
+    modelName = model || config.deepseek_model || 'deepseek-chat';
+
+    // 检查每日限额
+    const dailyLimit = parseInt(config.deepseek_daily_limit || '100');
+    const today = new Date().toISOString().split('T')[0];
+    const usage = db.prepare('SELECT call_count FROM user_api_usage WHERE user_id = ? AND date = ?').get(userId, today) as any;
+    const callCount = usage?.call_count || 0;
+
+    if (callCount >= dailyLimit) {
+      return res.status(429).json({
+        error: `今日调用次数已达上限 (${dailyLimit}次)。可在设置中配置自己的 DeepSeek 密钥，使用无限制。`,
+        call_count: callCount,
+        daily_limit: dailyLimit,
+      });
+    }
+  }
+
+  try {
+    // 调用 DeepSeek API
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: messages || [{ role: 'user', content: req.body.input || '' }],
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.log(`[DeepSeek] API 错误: ${response.status} ${errText}`);
+      return res.status(response.status).json({ error: `DeepSeek API 错误: ${response.status}` });
+    }
+
+    const data = await response.json() as any;
+
+    // 记录调用次数（仅全局 key 时计数）
+    if (!hasCustomKey) {
+      const today = new Date().toISOString().split('T')[0];
+      db.prepare(`
+        INSERT INTO user_api_usage (user_id, date, call_count) VALUES (?, ?, 1)
+        ON CONFLICT(user_id, date) DO UPDATE SET call_count = call_count + 1
+      `).run(userId, today);
+    }
+
+    res.json(data);
+  } catch (e: any) {
+    console.log(`[DeepSeek] 代理错误: ${e.message}`);
+    res.status(500).json({ error: `DeepSeek 调用失败: ${e.message}` });
+  }
+});
+
 // 健康检查
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });

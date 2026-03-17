@@ -3,12 +3,12 @@ import { getDB } from '../db';
 
 const router = Router();
 
-// VIP 积分对照表
-const VIP_CREDITS: Record<string, number> = {
+// 兜底积分对照（仅在 plans 表没数据时用）
+const VIP_CREDITS_FALLBACK: Record<string, number> = {
   '1month': 30,
-  '3month': 90,
-  '1year': 365,
-  'permanent': 999999,
+  '3month': 100,
+  '1year': 500,
+  'permanent': 9999,
 };
 
 // ======== 查询积分 ========
@@ -33,16 +33,18 @@ router.get('/history/:userId', (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// ======== VIP 激活时发放积分 ========
+// ======== VIP 激活时发放积分（从 plans.credits 读取） ========
 router.post('/vip-bonus', (req: Request, res: Response) => {
   try {
     const { userId, planDuration } = req.body;
     if (!userId || !planDuration) return res.status(400).json({ error: '缺少参数' });
 
-    const amount = VIP_CREDITS[planDuration] || 0;
+    const db = getDB();
+    // 2b: 从 plans 表读取积分，兜底用 FALLBACK
+    const plan = db.prepare('SELECT credits FROM plans WHERE duration = ?').get(planDuration) as any;
+    const amount = plan?.credits || VIP_CREDITS_FALLBACK[planDuration] || 0;
     if (amount === 0) return res.status(400).json({ error: '无效的套餐' });
 
-    const db = getDB();
     const existing = db.prepare('SELECT id, balance FROM credits WHERE user_id = ?').get(userId) as any;
 
     // 计算积分过期时间

@@ -53,19 +53,19 @@ router.get('/plans', (_req, res) => {
 });
 
 router.post('/plans', (req, res) => {
-  const { name, duration, original_price, actual_price, is_limited } = req.body;
+  const { name, duration, original_price, actual_price, is_limited, credits } = req.body;
   const db = getDB();
-  const result = db.prepare('INSERT INTO plans (name, duration, original_price, actual_price, is_limited) VALUES (?, ?, ?, ?, ?)')
-    .run(name, duration, original_price, actual_price, is_limited ? 1 : 0);
+  const result = db.prepare('INSERT INTO plans (name, duration, original_price, actual_price, is_limited, credits) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, duration, original_price, actual_price, is_limited ? 1 : 0, credits || 0);
   console.log(`[套餐] 新增套餐: ${name}`);
   res.json({ id: result.lastInsertRowid, message: '创建成功' });
 });
 
 router.put('/plans/:id', (req, res) => {
-  const { name, duration, original_price, actual_price, is_limited } = req.body;
+  const { name, duration, original_price, actual_price, is_limited, credits } = req.body;
   const db = getDB();
-  db.prepare('UPDATE plans SET name = ?, duration = ?, original_price = ?, actual_price = ?, is_limited = ? WHERE id = ?')
-    .run(name, duration, original_price, actual_price, is_limited ? 1 : 0, req.params.id);
+  db.prepare('UPDATE plans SET name = ?, duration = ?, original_price = ?, actual_price = ?, is_limited = ?, credits = ? WHERE id = ?')
+    .run(name, duration, original_price, actual_price, is_limited ? 1 : 0, credits || 0, req.params.id);
   console.log(`[套餐] 编辑套餐 ID=${req.params.id}`);
   res.json({ message: '更新成功' });
 });
@@ -117,18 +117,19 @@ router.get('/codes', (req, res) => {
 });
 
 router.post('/codes', (req, res) => {
-  const { plan_duration, count } = req.body;
+  const { plan_duration, count, credits } = req.body;
   const db = getDB();
-  const insertCode = db.prepare('INSERT INTO activation_codes (code, plan_duration, status) VALUES (?, ?, ?)');
+  const insertCode = db.prepare('INSERT INTO activation_codes (code, plan_duration, status, credits) VALUES (?, ?, ?, ?)');
   const generated: string[] = [];
 
   const num = count || 1;
+  const codeCredits = credits || 0;
   for (let i = 0; i < num; i++) {
     const code = generateActivationCode();
-    insertCode.run(code, plan_duration, 'pending');
+    insertCode.run(code, plan_duration, 'pending', codeCredits);
     generated.push(code);
   }
-  console.log(`[激活码] 生成 ${num} 个激活码 (${plan_duration})`);
+  console.log(`[激活码] 生成 ${num} 个激活码 (${plan_duration}, 积分:${codeCredits})`);
 
   res.json({ codes: generated, message: `成功生成 ${num} 个激活码` });
 });
@@ -372,6 +373,35 @@ router.get('/market-stats', (_req, res) => {
   const totalDownloads = (db.prepare('SELECT SUM(download_count) as s FROM marketplace_tasks').get() as any).s || 0;
   const totalCredits = (db.prepare('SELECT SUM(balance) as s FROM credits').get() as any).s || 0;
   res.json({ total, approved, pending, rejected, totalDownloads, totalCredits });
+});
+
+// ======== 2c: DeepSeek 全局配置管理 ========
+router.get('/config/deepseek', (_req, res) => {
+  const db = getDB();
+  const configs = db.prepare("SELECT key, value FROM system_config WHERE key LIKE 'deepseek_%'").all() as any[];
+  const result: Record<string, string> = {};
+  configs.forEach((c: any) => { result[c.key] = c.value; });
+  // 脱敏 API key
+  if (result.deepseek_api_key) {
+    const k = result.deepseek_api_key;
+    result.deepseek_api_key_masked = k.length > 8 ? k.substring(0, 4) + '****' + k.substring(k.length - 4) : (k ? '****' : '');
+    result.has_key = k ? 'true' : 'false';
+  }
+  res.json(result);
+});
+
+router.put('/config/deepseek', (req, res) => {
+  const { deepseek_api_key, deepseek_daily_limit, deepseek_base_url, deepseek_model } = req.body;
+  const db = getDB();
+  const upsert = db.prepare("INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, datetime('now'))");
+
+  if (deepseek_api_key !== undefined) upsert.run('deepseek_api_key', deepseek_api_key);
+  if (deepseek_daily_limit !== undefined) upsert.run('deepseek_daily_limit', String(deepseek_daily_limit));
+  if (deepseek_base_url !== undefined) upsert.run('deepseek_base_url', deepseek_base_url);
+  if (deepseek_model !== undefined) upsert.run('deepseek_model', deepseek_model);
+
+  console.log('[配置] 更新 DeepSeek 配置');
+  res.json({ success: true });
 });
 
 export default router;

@@ -808,8 +808,13 @@ async fn engine_status() -> local_model::EngineStatus {
 }
 
 #[tauri::command]
-async fn engine_download() -> Result<String, String> {
-    local_model::download_engine().await
+fn set_models_dir(dir: String) -> Result<(), String> {
+    local_model::set_models_dir(&dir)
+}
+
+#[tauri::command]
+fn get_models_dir() -> String {
+    local_model::models_dir()
 }
 
 #[tauri::command]
@@ -952,6 +957,9 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
 pub fn run() {
     use tauri_plugin_autostart::MacosLauncher;
 
+    // 加载自定义模型存储路径
+    local_model::load_models_dir_config();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When a second instance is launched, focus the existing window
@@ -995,7 +1003,8 @@ pub fn run() {
             recording_delete_node,
             recording_move_node,
             engine_status,
-            engine_download,
+            set_models_dir,
+            get_models_dir,
             model_list,
             model_pull,
             model_delete,

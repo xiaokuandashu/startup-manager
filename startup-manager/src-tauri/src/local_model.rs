@@ -26,6 +26,7 @@ pub struct EngineStatus {
     pub engine_running: bool,
     pub active_model: String,
     pub models: Vec<LocalModel>,
+    pub models_dir: String,
 }
 
 /// 推理响应 — 兼容多种 llama-server 版本
@@ -57,40 +58,80 @@ struct LlamaMessage {
 lazy_static::lazy_static! {
     static ref LLAMA_PID: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
     static ref ACTIVE_MODEL: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    static ref CUSTOM_MODELS_DIR: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 }
 
-/// 获取引擎存储目录
-fn engine_dir() -> String {
+/// 默认模型存储目录
+fn default_models_dir() -> String {
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        format!("{}/Library/Application Support/com.a.startup-manager/llama", home)
+        format!("{}/Library/Application Support/com.a.startup-manager/models", home)
     }
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
-        format!("{}\\startup-manager\\llama", appdata)
+        format!("{}\\startup-manager\\models", appdata)
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        format!("{}/.config/startup-manager/llama", home)
+        format!("{}/.config/startup-manager/models", home)
     }
 }
 
-/// 模型存储目录
-fn models_dir() -> String {
-    format!("{}/models", engine_dir())
+/// 获取当前模型存储目录（支持自定义路径）
+pub fn models_dir() -> String {
+    if let Ok(guard) = CUSTOM_MODELS_DIR.lock() {
+        if let Some(ref dir) = *guard {
+            return dir.clone();
+        }
+    }
+    default_models_dir()
 }
 
-/// llama-server 二进制路径
-fn server_bin_path() -> String {
+/// 设置自定义模型存储路径
+pub fn set_models_dir(dir: &str) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    if let Ok(mut guard) = CUSTOM_MODELS_DIR.lock() {
+        *guard = Some(dir.to_string());
+    }
+    // 持久化到配置文件
+    let config_path = models_config_path();
+    let _ = std::fs::write(&config_path, dir);
+    Ok(())
+}
+
+/// 获取模型目录配置文件路径
+fn models_config_path() -> String {
     #[cfg(target_os = "macos")]
-    { format!("{}/llama-server", engine_dir()) }
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/Library/Application Support/com.a.startup-manager/models_dir.conf", home)
+    }
     #[cfg(target_os = "windows")]
-    { format!("{}\\llama-server.exe", engine_dir()) }
+    {
+        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
+        format!("{}\\startup-manager\\models_dir.conf", appdata)
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    { format!("{}/llama-server", engine_dir()) }
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/.config/startup-manager/models_dir.conf", home)
+    }
+}
+
+/// 启动时加载自定义路径
+pub fn load_models_dir_config() {
+    let config_path = models_config_path();
+    if let Ok(dir) = std::fs::read_to_string(&config_path) {
+        let dir = dir.trim().to_string();
+        if !dir.is_empty() && std::path::Path::new(&dir).exists() {
+            if let Ok(mut guard) = CUSTOM_MODELS_DIR.lock() {
+                *guard = Some(dir);
+            }
+        }
+    }
 }
 
 /// 可下载的模型列表
@@ -150,9 +191,9 @@ fn available_models() -> Vec<LocalModel> {
     ]
 }
 
-/// 检测 llama-server 是否已安装
+/// 引擎已内置，始终可用
 pub fn is_engine_installed() -> bool {
-    std::path::Path::new(&server_bin_path()).exists()
+    true
 }
 
 /// 检测 llama-server 是否正在运行
@@ -175,10 +216,11 @@ pub async fn is_engine_running() -> bool {
 pub async fn get_engine_status() -> EngineStatus {
     let active = ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default();
     EngineStatus {
-        engine_installed: is_engine_installed(),
+        engine_installed: true,  // 内置引擎
         engine_running: is_engine_running().await,
         active_model: active,
         models: available_models(),
+        models_dir: models_dir(),
     }
 }
 
@@ -187,58 +229,52 @@ pub async fn get_model_list() -> Result<Vec<LocalModel>, String> {
     Ok(available_models())
 }
 
-/// 下载 llama-server 引擎二进制
-pub async fn download_engine() -> Result<String, String> {
-    let dir = engine_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败: {}", e))?;
+/// 获取内置 llama-server 二进制路径
+/// Tauri externalBin 会将 binaries/llama-server-{target-triple} 打包到：
+/// macOS: App.app/Contents/MacOS/binaries/llama-server
+/// Windows: 安装目录/binaries/llama-server.exe
+fn resolve_sidecar_path() -> Result<String, String> {
+    // 方式1: 尝试从当前 exe 目录解析
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            #[cfg(target_os = "windows")]
+            let sidecar = exe_dir.join("llama-server.exe");
+            #[cfg(not(target_os = "windows"))]
+            let sidecar = exe_dir.join("llama-server");
 
-    let bin_path = server_bin_path();
-    if std::path::Path::new(&bin_path).exists() {
-        return Ok("引擎已安装".into());
+            if sidecar.exists() {
+                return Ok(sidecar.to_string_lossy().to_string());
+            }
+
+            // macOS: 也检查同级 binaries/ 目录 (开发模式)
+            #[cfg(target_os = "macos")]
+            {
+                let sidecar_in_binaries = exe_dir.join("binaries/llama-server-aarch64-apple-darwin");
+                if sidecar_in_binaries.exists() {
+                    return Ok(sidecar_in_binaries.to_string_lossy().to_string());
+                }
+            }
+        }
     }
 
+    // 方式2: 尝试 cargo 开发模式路径
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
     #[cfg(target_os = "macos")]
-    let (url, archive_name) = {
-        #[cfg(target_arch = "aarch64")]
-        { (
-            "https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-server-macos-arm64",
-            "llama-server"
-        ) }
-        #[cfg(not(target_arch = "aarch64"))]
-        { (
-            "https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-server-macos-x64",
-            "llama-server"
-        ) }
-    };
-
-    #[cfg(target_os = "windows")]
-    let (url, archive_name) = (
-        "https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-server-windows-x64.exe",
-        "llama-server.exe"
-    );
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let (url, archive_name) = (
-        "https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-server-linux-x64",
-        "llama-server"
-    );
-
-    let output_path = format!("{}/{}", dir, archive_name);
-    let status = Command::new("curl")
-        .args(["-L", "-o", &output_path, "--progress-bar", url])
-        .status()
-        .map_err(|e| format!("下载失败: {}", e))?;
-
-    if !status.success() {
-        return Err("引擎下载失败".into());
-    }
-
-    #[cfg(not(target_os = "windows"))]
     {
-        let _ = Command::new("chmod").args(["+x", &output_path]).status();
+        let dev_path = format!("{}/binaries/llama-server-aarch64-apple-darwin", manifest_dir);
+        if std::path::Path::new(&dev_path).exists() {
+            return Ok(dev_path);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let dev_path = format!("{}\\binaries\\llama-server-x86_64-pc-windows-msvc.exe", manifest_dir);
+        if std::path::Path::new(&dev_path).exists() {
+            return Ok(dev_path);
+        }
     }
 
-    Ok("引擎安装完成".into())
+    Err("无法找到内置推理引擎二进制文件".into())
 }
 
 /// 下载 GGUF 模型
@@ -249,10 +285,6 @@ pub async fn download_model(model_id: &str) -> Result<String, String> {
 
     if model.download_url.is_empty() {
         return Err("该模型无需下载".into());
-    }
-
-    if !is_engine_installed() {
-        download_engine().await?;
     }
 
     let dir = models_dir();
@@ -291,7 +323,7 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 启动 llama-server 加载指定模型
+/// 启动内置 llama-server 加载指定模型
 pub fn start_engine(model_id: &str) -> Result<(), String> {
     stop_engine();
 
@@ -304,10 +336,8 @@ pub fn start_engine(model_id: &str) -> Result<(), String> {
         return Err(format!("模型文件不存在，请先下载: {}", model.name));
     }
 
-    let bin = server_bin_path();
-    if !std::path::Path::new(&bin).exists() {
-        return Err("推理引擎未安装，请先下载引擎".into());
-    }
+    // 使用内置的 llama-server 二进制
+    let bin = resolve_sidecar_path()?;
 
     let child = Command::new(&bin)
         .args([

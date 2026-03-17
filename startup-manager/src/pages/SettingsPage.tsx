@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2 } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -46,6 +46,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [models, setModels] = useState<{id:string;name:string;size:string;description:string;installed:boolean;downloading:boolean}[]>([]);
   const [engineRunning, setEngineRunning] = useState(false);
   const [modelDownloading, setModelDownloading] = useState<string|null>(null);
+  const [modelsDir, setModelsDir] = useState<string>('');
 
   useEffect(() => {
     const init = async () => {
@@ -110,6 +111,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           const status: any = await inv('engine_status');
           setModels(status.models || []);
           setEngineRunning(status.engine_running || false);
+          setModelsDir(status.models_dir || '');
         } catch { /* ignore */ }
       }
     };
@@ -123,6 +125,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       const status: any = await inv('engine_status');
       setModels(status.models || []);
       setEngineRunning(status.engine_running || false);
+      setModelsDir(status.models_dir || '');
     } catch { /* ignore */ }
   };
 
@@ -386,10 +389,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         <div className="settings-section">
           <h3 className="section-title"><Brain size={18} style={{marginRight:6,verticalAlign:'middle'}} /> 本地模型管理</h3>
           <div className="setting-item">
+            <span>推理引擎</span>
+            <span className="tag-green"><CheckCircle2 size={14} style={{marginRight:3}} /> 已内置</span>
+          </div>
+          <div className="setting-item">
             <span>引擎状态</span>
             <span className={engineRunning ? 'tag-green' : 'tag-gray'}>
               {engineRunning ? <><CheckCircle2 size={14} style={{marginRight:3}} /> 运行中</> : <><Square size={14} style={{marginRight:3}} /> 未运行</>}
             </span>
+          </div>
+          <div className="setting-item">
+            <span>模型存储路径</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={modelsDir}>{modelsDir || '默认路径'}</span>
+              <button className="action-link" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }} onClick={async () => {
+                if (!isTauriEnv()) return;
+                try {
+                  const { open } = await import('@tauri-apps/plugin-dialog');
+                  const selected = await open({ directory: true, title: '选择模型存储目录' });
+                  if (selected && typeof selected === 'string') {
+                    const { invoke: inv } = await import('@tauri-apps/api/core');
+                    await inv('set_models_dir', { dir: selected });
+                    setModelsDir(selected);
+                    showStatus('模型存储路径已更新 ✅');
+                    refreshModels();
+                  }
+                } catch (e) { showStatus(`更换路径失败: ${e}`); }
+              }}><FolderOpen size={12} /> 更换</button>
+            </div>
           </div>
           <div className="model-list">
             {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (

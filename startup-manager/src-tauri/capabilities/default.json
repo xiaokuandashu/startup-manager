@@ -8,6 +8,8 @@
     "opener:default",
     "dialog:default",
     "shell:default",
+    "shell:allow-execute",
+    "shell:allow-spawn",
     "autostart:default",
     "fs:default",
     "fs:allow-write-text-file",

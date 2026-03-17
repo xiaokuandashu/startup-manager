@@ -8,6 +8,8 @@ import CodesPage from './pages/CodesPage';
 import UpdatesPage from './pages/UpdatesPage';
 import QQGroupsPage from './pages/QQGroupsPage';
 import AgreementsPage from './pages/AgreementsPage';
+import MarketplaceAdminPage from './pages/MarketplaceAdminPage';
+import CreditsAdminPage from './pages/CreditsAdminPage';
 import Layout from './components/Layout';
 
 function App() {
@@ -43,6 +45,8 @@ function App() {
           <Route path="/updates" element={<UpdatesPage token={token} />} />
           <Route path="/qq-groups" element={<QQGroupsPage token={token} />} />
           <Route path="/agreements" element={<AgreementsPage token={token} />} />
+          <Route path="/marketplace" element={<MarketplaceAdminPage token={token} />} />
+          <Route path="/credits" element={<CreditsAdminPage token={token} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

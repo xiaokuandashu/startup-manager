@@ -14,6 +14,8 @@ const navItems = [
   { path: '/plans', label: '套餐管理', icon: '💎' },
   { path: '/orders', label: '用户订单', icon: '📋' },
   { path: '/codes', label: '激活码管理', icon: '🔑' },
+  { path: '/marketplace', label: '市场管理', icon: '🏪' },
+  { path: '/credits', label: '积分管理', icon: '💰' },
   { path: '/updates', label: '更新管理', icon: '🔄' },
   { path: '/qq-groups', label: 'QQ群管理', icon: '💬' },
   { path: '/agreements', label: '协议管理', icon: '📜' },

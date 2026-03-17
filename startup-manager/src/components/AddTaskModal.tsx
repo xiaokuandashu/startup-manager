@@ -440,6 +440,27 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
             </div>
           )}
 
+          {/* 录制动作绑定 — 放在路径后面 */}
+          <div className="form-row-inline">
+            <label className="form-label-inline">关联录制</label>
+            <div className="form-input-wrap">
+              <select
+                value={selectedRecordingId}
+                onChange={e => {
+                  const name = e.target.options[e.target.selectedIndex]?.text || '';
+                  setSelectedRecordingId(e.target.value);
+                  setSelectedRecordingName(e.target.value ? name : '');
+                }}
+                className="recording-select"
+              >
+                <option value="">不关联</option>
+                {recordings.map(r => (
+                  <option key={r.name} value={r.name}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {/* 周期类型 */}
           <div className="form-row-inline">
             <label className="form-label-inline">{t('selectCycleType', lang)}</label>
@@ -619,26 +640,6 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ isOpen, onClose, onSubmit, 
             </div>
           </div>
 
-          {/* 录制动作绑定 */}
-          <div className="form-row-inline">
-            <label className="form-label-inline">🎬 关联录制</label>
-            <div className="form-input-wrap">
-              <select
-                value={selectedRecordingId}
-                onChange={e => {
-                  const name = e.target.options[e.target.selectedIndex]?.text || '';
-                  setSelectedRecordingId(e.target.value);
-                  setSelectedRecordingName(e.target.value ? name : '');
-                }}
-                className="recording-select"
-              >
-                <option value="">不关联</option>
-                {recordings.map(r => (
-                  <option key={r.name} value={r.name}>{r.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
 
           <div className="modal-footer">
             <button type="button" className="btn-cancel" onClick={onClose}>{t('cancel', lang)}</button>

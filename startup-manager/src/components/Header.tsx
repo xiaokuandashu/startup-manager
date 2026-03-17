@@ -3,7 +3,7 @@ import { PageType, ToolTab } from '../types';
 import UserDropdown from './UserDropdown';
 import AvatarCropper from './AvatarCropper';
 import { t, Language } from '../i18n';
-import { Search, Star, Moon, Sun, Pin, PinOff, X, Wrench } from 'lucide-react';
+import { Search, Star, Moon, Sun, Pin, PinOff, X } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -85,7 +85,7 @@ const Header: React.FC<HeaderProps> = ({
             className={`page-tab ${currentPage === 'tools' && !activeTabId ? 'active' : ''}`}
             onClick={() => { onPageChange('tools'); }}
           >
-            <Wrench size={14} style={{marginRight: 4}} /> 工具
+            工具
           </button>
 
           {/* 已打开的工具标签（浏览器风格，紧跟在工具后面） */}

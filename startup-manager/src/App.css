@@ -355,7 +355,7 @@ body {
 }
 .task-table-header {
   display: grid;
-  grid-template-columns: 40px 150px 120px 120px 140px 140px 160px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 12px 16px;
   background: #fafafa;
@@ -367,7 +367,7 @@ body {
 .task-table-body { flex: 1; overflow-y: auto; min-height: 200px; }
 .task-row {
   display: grid;
-  grid-template-columns: 40px 150px 120px 120px 140px 140px 160px 1fr 80px 60px 130px 40px;
+  grid-template-columns: 40px 150px 100px 100px 140px 140px 160px 1fr 80px 60px 130px 40px;
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid #f5f5f5;
@@ -395,6 +395,9 @@ body {
 .recording-select { width: 100%; padding: 7px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--bg-card, #fff); font-size: 13px; color: var(--text-primary); }
 .task-path-cell { max-width: 120px; align-self: center; }
 .task-note-cell { align-self: center; }
+.task-status-cell { justify-content: flex-end; text-align: right; }
+.task-toggle-cell { justify-content: flex-end; text-align: right; }
+.task-actions-cell { justify-content: flex-end; text-align: right; }
 
 .file-ext-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -626,7 +629,7 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  z-index: 500;
+  z-index: 9999;
   padding-top: 40px;
   animation: fadeIn 0.15s ease;
 }
@@ -725,7 +728,7 @@ body {
 
 .task-type-tabs { display: flex; gap: 0; }
 .type-tab {
-  padding: 6px 20px;
+  padding: 6px 10px;
   border: 1px solid var(--border-color);
   background: white;
   font-size: 13px;
@@ -829,7 +832,7 @@ body {
   border-radius: var(--radius-sm);
   font-size: 14px;
   outline: none;
-  min-width: 180px;
+  min-width: 160px;
   background: white;
 }
 .form-input-sm {
@@ -2073,6 +2076,58 @@ body {
 [data-theme="dark"] .ai-task-type-badge {
   background: rgba(0, 145, 255, 0.15);
 }
+
+/* ======== Comprehensive Dark Mode for New Modules ======== */
+
+/* AI Assistant — input, model bar, quick bar */
+[data-theme="dark"] .ai-input-bar { background: #1c2128; border-color: #2d333b; }
+[data-theme="dark"] .ai-input { background: #2d333b; color: #e6edf3; border-color: #444c56; }
+[data-theme="dark"] .ai-input::placeholder { color: #768390; }
+[data-theme="dark"] .ai-btn-send { background: #388bfd; }
+[data-theme="dark"] .ai-btn-send:hover { background: #58a6ff; }
+[data-theme="dark"] .ai-model-bar { background: #1c2128; border-color: #2d333b; }
+[data-theme="dark"] .ai-model-toggle { background: #2d333b; color: #e6edf3; border-color: #444c56; }
+[data-theme="dark"] .ai-model-toggle:hover { background: #373e47; }
+[data-theme="dark"] .ai-model-panel { background: #1c2128; border-color: #2d333b; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+[data-theme="dark"] .ai-model-item { border-color: #2d333b; }
+[data-theme="dark"] .ai-model-item:hover { background: #2d333b; }
+[data-theme="dark"] .ai-model-item.active { background: rgba(56,139,253,0.1); border-color: #388bfd; }
+[data-theme="dark"] .ai-model-item-name { color: #e6edf3; }
+[data-theme="dark"] .ai-model-item-desc { color: #768390; }
+[data-theme="dark"] .ai-model-panel-note { color: #768390; }
+[data-theme="dark"] .ai-quick-bar { background: #1c2128; border-color: #2d333b; }
+[data-theme="dark"] .ai-quick-btn { background: #2d333b; color: #adbac7; border-color: #444c56; }
+[data-theme="dark"] .ai-quick-btn:hover { background: #373e47; color: #e6edf3; }
+[data-theme="dark"] .ai-task-card { background: #2d333b; border-color: #444c56; }
+[data-theme="dark"] .ai-task-card-name { color: #e6edf3; }
+[data-theme="dark"] .ai-task-card-path { color: #768390; }
+[data-theme="dark"] .ai-btn-add-task { background: #388bfd; }
+[data-theme="dark"] .ai-msg-user .ai-msg-text { background: #1a3a5c; color: #e6edf3; }
+
+/* Marketplace — dual-mode toggle, connection badge */
+[data-theme="dark"] .mkt-mode-toggle { background: #2d333b; }
+[data-theme="dark"] .mkt-mode-btn { color: #768390; }
+[data-theme="dark"] .mkt-mode-btn.active { background: #373e47; color: #e6edf3; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+[data-theme="dark"] .mkt-mode-btn:hover { color: #adbac7; }
+
+/* Model Management Cards */
+[data-theme="dark"] .model-card { background: #2d333b; border-color: #444c56; }
+[data-theme="dark"] .model-card-name { color: #e6edf3; }
+[data-theme="dark"] .model-card-meta { color: #768390; }
+[data-theme="dark"] .model-btn-download { background: #388bfd; color: #fff; }
+[data-theme="dark"] .model-btn-download:hover { background: #58a6ff; }
+[data-theme="dark"] .model-btn-delete { color: #f47067; border-color: #f47067; }
+
+/* Recording Picker */
+[data-theme="dark"] .rec-picker-dropdown { background: #2d333b; border-color: #444c56; }
+[data-theme="dark"] .rec-picker-item:hover { background: rgba(56,139,253,0.15); color: #58a6ff; }
+[data-theme="dark"] .rec-picker-empty { color: #768390; }
+[data-theme="dark"] .recording-select { background: #2d333b; color: #e6edf3; border-color: #444c56; }
+
+/* MindMap */
+[data-theme="dark"] .mindmap-node { background: #2d333b; border-color: #444c56; color: #e6edf3; }
+[data-theme="dark"] .mindmap-quick-add button { background: #2d333b; color: #adbac7; border-color: #444c56; }
+[data-theme="dark"] .mindmap-quick-add button:hover { background: #373e47; color: #e6edf3; }
 
 /* AI Model Selector */
 .ai-model-bar {

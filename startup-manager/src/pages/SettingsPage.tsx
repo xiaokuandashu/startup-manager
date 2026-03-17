@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Brain } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Brain, Download, Square, CheckCircle2, Cpu, Trash2 } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -388,21 +388,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           <div className="setting-item">
             <span>引擎状态</span>
             <span className={engineRunning ? 'tag-green' : 'tag-gray'}>
-              {engineRunning ? '✅ 运行中' : '⏹ 未运行'}
+              {engineRunning ? <><CheckCircle2 size={14} style={{marginRight:3}} /> 运行中</> : <><Square size={14} style={{marginRight:3}} /> 未运行</>}
             </span>
           </div>
           <div className="model-list">
             {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (
               <div key={m.id} className="model-card">
                 <div className="model-card-info">
-                  <div className="model-card-name">{m.name}</div>
+                  <div className="model-card-name"><Cpu size={14} style={{marginRight:4,verticalAlign:'middle'}} />{m.name}</div>
                   <div className="model-card-meta">{m.size} · {m.description}</div>
                 </div>
                 <div className="model-card-actions">
                   {m.installed ? (
                     <>
-                      <span className="tag-green">已安装</span>
-                      <button className="model-btn-delete" onClick={() => handleDeleteModel(m.id)}>删除</button>
+                      <span className="tag-green"><CheckCircle2 size={12} style={{marginRight:2}} /> 已安装</span>
+                      <button className="model-btn-delete" onClick={() => handleDeleteModel(m.id)}><Trash2 size={12} style={{marginRight:2}} />删除</button>
                     </>
                   ) : (
                     <button
@@ -410,7 +410,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                       onClick={() => handleDownloadModel(m.id)}
                       disabled={modelDownloading !== null}
                     >
-                      {modelDownloading === m.id ? '下载中...' : '📥 下载'}
+                      {modelDownloading === m.id ? '下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
                     </button>
                   )}
                 </div>

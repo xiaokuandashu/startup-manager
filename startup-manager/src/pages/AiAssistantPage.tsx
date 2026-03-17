@@ -263,9 +263,30 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             m.id === loadingId ? { ...m, content: `🧠 ${activeModel} 本地推理中...` } : m
           ));
           try {
-            const result = await invoke<string>('local_model_infer', { input: text });
-            const cleanJson = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            response = JSON.parse(cleanJson) as AiResponse;
+            let inferResult: string | null = null;
+            let lastError = '';
+            for (let retry = 0; retry < 3; retry++) {
+              try {
+                inferResult = await invoke<string>('local_model_infer', { input: text });
+                break;
+              } catch (e) {
+                lastError = String(e);
+                if (String(e).includes('正在加载') && retry < 2) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中，3秒后自动重试 (${retry + 1}/3)...` } : m
+                  ));
+                  await new Promise(r => setTimeout(r, 3000));
+                  continue;
+                }
+                break;
+              }
+            }
+            if (inferResult) {
+              const cleanJson = inferResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              response = JSON.parse(cleanJson) as AiResponse;
+            } else {
+              response = { message: `❌ 本地模型推理失败: ${lastError}`, response_type: 'error', tasks: [] };
+            }
           } catch (e) {
             response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
           }

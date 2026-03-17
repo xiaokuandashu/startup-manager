@@ -33,6 +33,7 @@ const TaskRow: React.FC<TaskRowProps> = ({
   const moreRef = useRef<HTMLButtonElement>(null);
   const [showRecPicker, setShowRecPicker] = useState(false);
   const [recList, setRecList] = useState<{name:string}[]>([]);
+  const recCellRef = useRef<HTMLDivElement>(null);
 
   const ext = task.fileExt || '.app';
   const bgColor = extColorMap[ext] || '#42A5F5';
@@ -68,7 +69,7 @@ const TaskRow: React.FC<TaskRowProps> = ({
       {/* 路径地址 */}
       <div className="task-cell task-path-cell" title={task.path}>{task.path || '— —'}</div>
       {/* 关联录制动作（独立列） */}
-      <div className="task-cell" style={{ position: 'relative' }}>
+      <div className="task-cell" ref={recCellRef} style={{ position: 'relative' }}>
         {task.recordingId ? (
           <span className="task-rec-area">
             <span
@@ -107,23 +108,31 @@ const TaskRow: React.FC<TaskRowProps> = ({
             }}
           >+ 录制</span>
         )}
-        {showRecPicker && (
-          <div className="rec-picker-dropdown">
-            {recList.length === 0 ? (
-              <div className="rec-picker-empty">没有录制</div>
-            ) : recList.map(r => (
-              <div
-                key={r.name}
-                className="rec-picker-item"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUpdateRecording?.(task.id, r.name, r.name);
-                  setShowRecPicker(false);
-                }}
-              >{r.name}</div>
-            ))}
-          </div>
-        )}
+        {showRecPicker && (() => {
+          const rect = recCellRef.current?.getBoundingClientRect();
+          const top = (rect?.bottom ?? 0) + 4;
+          const left = rect?.left ?? 0;
+          return (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 99998 }} onClick={(e) => { e.stopPropagation(); setShowRecPicker(false); }} />
+              <div className="rec-picker-dropdown" style={{ position: 'fixed', top, left }}>
+                {recList.length === 0 ? (
+                  <div className="rec-picker-empty">没有录制</div>
+                ) : recList.map(r => (
+                  <div
+                    key={r.name}
+                    className="rec-picker-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateRecording?.(task.id, r.name, r.name);
+                      setShowRecPicker(false);
+                    }}
+                  >{r.name}</div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
       </div>
       {/* 备注 */}
       <div className="task-cell task-note-cell" title={task.note}>{task.note || '—'}</div>

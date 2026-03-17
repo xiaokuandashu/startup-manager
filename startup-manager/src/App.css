@@ -3346,3 +3346,22 @@ body {
   width: 100%;
   color: var(--text-primary, #374151);
 }
+/* ========================================
+   #17: Global icon + text alignment
+   ======================================== */
+.action-link, .btn-check-update, .mkt-btn-pub, .mkt-btn-my, .mkt-btn-download,
+.mkt-mode-btn, .mkt-cat-btn, .ai-quick-btn, .ai-btn-add-task, .model-btn-download,
+.model-btn-delete, .mkt-comment-btn, .rec-btn, .rec-mode-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 3px;
+}
+.mkt-detail-info span, .mkt-card-stats span, .mkt-conn-badge,
+.mkt-credits, .setting-item span, .tag-green, .tag-gray {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+h3 svg, h4 svg, .section-title svg {
+  vertical-align: middle;
+}

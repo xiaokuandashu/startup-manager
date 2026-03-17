@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
@@ -151,10 +151,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     init();
   }, []);
 
+  // #7: 缓存 invoke 引用，避免每次动态 import
+  const invokeRef = useRef<any>(null);
+  const getInvoke = async () => {
+    if (!invokeRef.current) {
+      const mod = await import('@tauri-apps/api/core');
+      invokeRef.current = mod.invoke;
+    }
+    return invokeRef.current;
+  };
+
   const refreshModels = async () => {
     if (!isTauriEnv()) return;
     try {
-      const { invoke: inv } = await import('@tauri-apps/api/core');
+      const inv = await getInvoke();
       const status: any = await inv('engine_status');
       setModels(status.models || []);
       setEngineRunning(status.engine_running || false);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../i18n';
-import { Circle, List, Network, Mouse, MousePointer, Keyboard, Brain, Camera, Crosshair, RefreshCw, FolderOpen, Package, FileText, CircleDot, Hexagon, Clock, Edit3, Save, Trash2, AlertTriangle, Square, CheckCircle2, Pause } from 'lucide-react';
+import { Circle, List, Network, Mouse, MousePointer, Keyboard, Brain, Camera, Crosshair, RefreshCw, FolderOpen, Package, FileText, CircleDot, Hexagon, Clock, Edit3, Save, Trash2, AlertTriangle, Square, CheckCircle2, Pause, Video } from 'lucide-react';
 import RecordingMindMap from '../components/RecordingMindMap';
 
 interface RecordedStep {
@@ -459,7 +459,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
       {/* 录制控制面板 */}
       <div className="rec-control-panel">
         <div className="rec-control-header">
-          <h3>🎬 操作录制</h3>
+          <h3><Video size={16} style={{marginRight:4,verticalAlign:'middle'}} /> 操作录制</h3>
           <span className="rec-hint">录制鼠标和键盘操作，保存后可编辑和回放</span>
         </div>
 
@@ -534,7 +534,7 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
         <h4><FolderOpen size={14} style={{marginRight:4,verticalAlign:'middle'}} /> 已保存的录制（{savedRecordings.length}）</h4>
         {savedRecordings.length === 0 ? (
           <div className="rec-empty">
-            <div className="rec-empty-icon">🎬</div>
+            <div className="rec-empty-icon"><Video size={48} color="#9ca3af" /></div>
             <div className="rec-empty-text">暂无录制，选择模式后点击「开始录制」</div>
           </div>
         ) : (

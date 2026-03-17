@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2 } from 'lucide-react';
+import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Key, Settings as SettingsIcon } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -298,6 +298,34 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           } catch {
             response = { message: '❌ DeepSeek 云端连接失败', response_type: 'error', tasks: [] };
           }
+        } else if (activeModel === 'deepseek_user') {
+          // DeepSeek 自有密钥（通过服务端代理 API，自动使用用户密钥）
+          setMessages(prev => prev.map(m =>
+            m.id === loadingId ? { ...m, content: '🔑 正在使用您的 DeepSeek 密钥...' } : m
+          ));
+          try {
+            const token = localStorage.getItem('auth_token');
+            const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ messages: [{ role: 'user', content: text }] }),
+            });
+            if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              const content = data.choices?.[0]?.message?.content || '';
+              try {
+                const cleanJson = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();
+                response = JSON.parse(cleanJson) as AiResponse;
+              } catch {
+                response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
+              }
+            } else {
+              const errData = await proxyRes.json().catch(() => ({ error: '连接失败' }));
+              response = { message: `⚠️ ${errData.error || '请求失败'}`, response_type: 'error', tasks: [] };
+            }
+          } catch {
+            response = { message: '❌ DeepSeek 连接失败', response_type: 'error', tasks: [] };
+          }
         } else {
           // 本地内置引擎推理
           setMessages(prev => prev.map(m =>
@@ -483,6 +511,40 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               </div>
             </div>
           ))}
+          {/* #14: 用户自有 DeepSeek 密钥模型 */}
+          <div
+            className={`ai-model-item ${activeModel === 'deepseek_user' ? 'active' : ''}`}
+            onClick={() => {
+              if (deepseekUsage.has_custom_key) {
+                setActiveModel('deepseek_user');
+                setShowModelPanel(false);
+              } else {
+                setShowModelPanel(false);
+                alert('请先在 “设置 → DeepSeek 密钥” 中配置您的 API Key');
+              }
+            }}
+          >
+            <div className="ai-model-item-left">
+              <div className="ai-model-item-name"><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek (自有密钥)</div>
+              <div className="ai-model-item-desc">
+                使用您自己的 API Key，无次数限制
+                <span style={{ marginLeft: 6, fontSize: 10, color: deepseekUsage.has_custom_key ? '#22c55e' : '#9ca3af' }}>
+                  {deepseekUsage.has_custom_key ? '· 已配置' : '· 未配置，点击去设置'}
+                </span>
+              </div>
+            </div>
+            <div className="ai-model-item-right">
+              {deepseekUsage.has_custom_key ? (
+                activeModel === 'deepseek_user' ? (
+                  <span className="ai-model-badge active">使用中</span>
+                ) : (
+                  <span className="ai-model-badge">切换</span>
+                )
+              ) : (
+                <span className="ai-model-badge" style={{color:'#9ca3af'}}><SettingsIcon size={12} style={{marginRight:2}} /> 去配置</span>
+              )}
+            </div>
+          </div>
           <div className="ai-model-panel-note">
             <Lightbulb size={12} style={{marginRight:3,verticalAlign:'middle'}} /> 本地模型内置推理引擎，无需安装外部软件。点击模型即可自动下载并启动。
           </div>
@@ -494,7 +556,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         {messages.map(msg => (
           <div key={msg.id} className={`ai-msg ai-msg-${msg.role}`}>
             <div className="ai-msg-avatar">
-              {msg.role === 'user' ? '👤' : '🤖'}
+              {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
             </div>
             <div className="ai-msg-body">
               {msg.loading ? (
@@ -515,8 +577,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                         <div key={i} className="ai-task-card">
                           <div className="ai-task-card-header">
                             <span className="ai-task-type-badge">
-                              {task.task_type === 'application' ? '📱' :
-                               task.task_type === 'script' ? '📜' : '📂'}
+                              {task.task_type === 'application' ? <Smartphone size={14} style={{marginRight:3,verticalAlign:'middle'}} /> :
+                               task.task_type === 'script' ? <FileCode size={14} style={{marginRight:3,verticalAlign:'middle'}} /> : <FolderOpen size={14} style={{marginRight:3,verticalAlign:'middle'}} />}
                               {task.task_type}
                             </span>
                             <span className="ai-task-schedule">

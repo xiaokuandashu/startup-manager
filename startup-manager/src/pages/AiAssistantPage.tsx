@@ -181,6 +181,13 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     })();
   }, []);
 
+  // 监听其他页面的密钥变更事件
+  useEffect(() => {
+    const handler = () => { loadDeepseekUsage(); };
+    window.addEventListener('deepseek-key-changed', handler);
+    return () => window.removeEventListener('deepseek-key-changed', handler);
+  }, []);
+
   const loadDeepseekUsage = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -763,6 +770,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       if (keyRes.ok) {
                         setKeyMsg('✅ 已保存');
                         loadDeepseekUsage();
+                        const k = keyInput.trim();
+                        const masked = k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****';
+                        window.dispatchEvent(new CustomEvent('deepseek-key-changed', { detail: { hasKey: true, masked } }));
                         setTimeout(() => {
                           setShowKeyPopup(false);
                           setActiveModel('deepseek_user');

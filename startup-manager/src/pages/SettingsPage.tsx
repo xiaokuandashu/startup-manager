@@ -214,6 +214,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     init();
   }, []);
 
+  // 监听其他页面的密钥变更事件
+  useEffect(() => {
+    const handler = (e: any) => {
+      const { hasKey, masked } = e.detail || {};
+      setHasDeepseekKey(!!hasKey);
+      setDeepseekKeyMasked(masked || '');
+      refreshDeepseekUsage();
+    };
+    window.addEventListener('deepseek-key-changed', handler);
+    return () => window.removeEventListener('deepseek-key-changed', handler);
+  }, []);
+
   // 单独查询 DeepSeek 剩余次数
   const refreshDeepseekUsage = async () => {
     try {
@@ -833,6 +845,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                     });
                     setHasDeepseekKey(false); setDeepseekKeyMasked(''); setDeepseekRemaining(100);
                     setDeepseekKeyStatus('✅ 密钥已清除');
+                    window.dispatchEvent(new CustomEvent('deepseek-key-changed', { detail: { hasKey: false, masked: '' } }));
                     setTimeout(() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }, 1500);
                   } catch (e) { setDeepseekKeyStatus(`清除失败: ${e}`); }
                 }} style={{ padding: '8px 20px', border: '1px solid #ef4444', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444' }}>
@@ -854,9 +867,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   if (!resp.ok) { const e = await resp.json(); setDeepseekKeyStatus(`配置失败: ${e.error || '未知错误'}`); return; }
                   setHasDeepseekKey(true);
                   const k = deepseekKeyInput.trim();
-                  setDeepseekKeyMasked(k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****');
-                  setDeepseekKeyInput(''); setDeepseekRemaining(-1);
+                  const masked = k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****';
+                  setDeepseekKeyMasked(masked);
+                  setDeepseekKeyInput(''); setDeepseekRemaining(null);
                   setDeepseekKeyStatus('✅ 密钥配置成功');
+                  window.dispatchEvent(new CustomEvent('deepseek-key-changed', { detail: { hasKey: true, masked } }));
+                  refreshDeepseekUsage();
                   setTimeout(() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }, 1500);
                 } catch (e) { setDeepseekKeyStatus(`配置失败: ${e}`); }
               }}>保存</button>

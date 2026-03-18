@@ -620,15 +620,13 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 </div>
                 <div className="ai-model-item-desc">
                   {model.description}
-                  {model.id === 'deepseek_cloud' && (
-                    <span style={{ color: '#f59e0b' }}>
-                      {` · 每日 ${deepseekUsage.daily_limit} 次调用 · 今日剩余 ${deepseekUsage.remaining} 次`}
-                    </span>
-                  )}
-                  {model.id === 'deepseek_cloud' && (
-                    <button onClick={(e) => { e.stopPropagation(); loadDeepseekUsage(); }} style={{background:'none',border:'1px solid var(--border-color)',borderRadius:4,cursor:'pointer',padding:'1px 5px',fontSize:10,color:'var(--text-secondary)',marginLeft:4,verticalAlign:'middle'}} title="刷新">↻</button>
-                  )}
                 </div>
+                {model.id === 'deepseek_cloud' && (
+                  <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {`每日 ${deepseekUsage.daily_limit} 次调用 · 今日剩余 ${deepseekUsage.remaining} 次`}
+                    <button onClick={(e) => { e.stopPropagation(); loadDeepseekUsage(); }} style={{background:'none',border:'1px solid var(--border-color)',borderRadius:4,cursor:'pointer',padding:'1px 5px',fontSize:10,color:'var(--text-secondary)'}} title="刷新">↻</button>
+                  </div>
+                )}
               </div>
               <div className="ai-model-item-right">
                 {model.installed ? (

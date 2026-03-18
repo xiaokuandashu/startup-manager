@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Key } from 'lucide-react';
+import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -508,8 +508,26 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {/* 顶部模型状态栏 */}
       <div className="ai-model-bar">
         <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
-          <span className={`ai-model-dot ${engineRunning ? '' : 'offline'}`} />
-          当前模型：{models.find(m => m.id === activeModel)?.name || '本地规则引擎'}
+          <span className={`ai-model-dot ${engineRunning || activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user' ? '' : 'offline'}`} />
+          当前模型：
+          {activeModel === 'rule_engine' ? (
+            '请选择 AI 模型'
+          ) : activeModel === 'deepseek_cloud' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              DeepSeek 云端
+              <span style={{ marginLeft: 6, padding: '1px 6px', background: '#fef3c7', color: '#b45309', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>官方</span>
+            </span>
+          ) : activeModel === 'deepseek_user' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              DeepSeek 云端
+              <span style={{ marginLeft: 6, padding: '1px 6px', background: '#dcfce7', color: '#166534', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>自己</span>
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              {models.find(m => m.id === activeModel)?.name || '未知模型'}
+              <span style={{ marginLeft: 6, padding: '1px 6px', background: '#eff6ff', color: '#3b82f6', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>本地</span>
+            </span>
+          )}
           <ChevronDown size={14} style={{ marginLeft: 4 }} />
         </button>
       </div>
@@ -517,20 +535,44 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {/* 模型选择面板 */}
       {showModelPanel && (
         <div className="ai-model-panel">
-          <div className="ai-model-panel-title">
+          <div className="ai-model-panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               选择 AI 模型
               <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: engineRunning ? '#22c55e' : '#9ca3af' }}>
                 {engineRunning ? '● 引擎运行中' : engineInstalled ? '○ 引擎已安装' : '○ 引擎未安装'}
               </span>
             </div>
-            <button className="modal-close" onClick={() => setShowModelPanel(false)} style={{ padding: '4px', margin: '-4px' }}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+            <button
+              onClick={() => setShowModelPanel(false)}
+              className="modal-close"
+              aria-label="关闭"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#9ca3af',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.color = '#475569';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#9ca3af';
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
           </div>
-          {models.map(model => (
+          {models.filter(m => m.id !== 'rule_engine').map(model => (
             <div
               key={model.id}
               className={`ai-model-item ${activeModel === model.id ? 'active' : ''}`}
@@ -549,8 +591,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             >
               <div className="ai-model-item-left">
                 <div className="ai-model-item-name">
-                  {model.name}
-                  {model.id === 'deepseek_cloud' && (
+                  {model.id === 'deepseek_cloud' ? 'DeepSeek 云端' : model.name}
+                  {model.id === 'deepseek_cloud' ? (
                     <span style={{
                       display: 'inline-block',
                       marginLeft: 8,
@@ -562,7 +604,19 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       fontWeight: 500,
                       verticalAlign: 'middle',
                     }}>官方</span>
-                  )}
+                  ) : model.id !== 'rule_engine' ? (
+                    <span style={{
+                      display: 'inline-block',
+                      marginLeft: 8,
+                      padding: '1px 6px',
+                      background: '#eff6ff',
+                      color: '#3b82f6',
+                      borderRadius: 10,
+                      fontSize: 10,
+                      fontWeight: 500,
+                      verticalAlign: 'middle',
+                    }}>本地</span>
+                  ) : null}
                 </div>
                 <div className="ai-model-item-desc">
                   {model.description}
@@ -630,10 +684,21 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               ) : (
                 <>
                   <div className="ai-model-item-name">
-                    <Key size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> DeepSeek (自有密钥)
+                    DeepSeek 云端
+                    <span style={{
+                      display: 'inline-block',
+                      marginLeft: 8,
+                      padding: '1px 6px',
+                      background: '#dcfce7',
+                      color: '#166534',
+                      borderRadius: 10,
+                      fontSize: 10,
+                      fontWeight: 500,
+                      verticalAlign: 'middle',
+                    }}>自己</span>
                   </div>
                   <div className="ai-model-item-desc">
-                    使用您自己的 API Key，无次数限制
+                    理解复杂指令，需要网络
                     <span style={{ color: '#9ca3af' }}> · 未配置，点击配置</span>
                   </div>
                 </>

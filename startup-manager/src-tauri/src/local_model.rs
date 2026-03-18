@@ -165,7 +165,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "通义千问，中文最佳，推荐首选".into(),
             installed: std::path::Path::new(&format!("{}/qwen2.5-1.5b-instruct-q4_k_m.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
+            download_url: "https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
             filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
         },
         LocalModel {
@@ -175,7 +175,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "微软小模型，推理能力强".into(),
             installed: std::path::Path::new(&format!("{}/phi-3-mini-4k-instruct-q4.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf".into(),
+            download_url: "https://hf-mirror.com/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf".into(),
             filename: "phi-3-mini-4k-instruct-q4.gguf".into(),
         },
         LocalModel {
@@ -185,7 +185,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "Google 轻量级模型".into(),
             installed: std::path::Path::new(&format!("{}/gemma-2-2b-it-Q4_K_M.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf".into(),
+            download_url: "https://hf-mirror.com/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf".into(),
             filename: "gemma-2-2b-it-Q4_K_M.gguf".into(),
         },
     ]

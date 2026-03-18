@@ -54,7 +54,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   // model management
   const [models, setModels] = useState<{id:string;name:string;size:string;description:string;installed:boolean;downloading:boolean}[]>([]);
   const [engineRunning, setEngineRunning] = useState(false);
-  const [modelDownloading, setModelDownloading] = useState<string|null>(null);
+  const [modelDownloading, setModelDownloading] = useState<Set<string>>(new Set());
   const [modelDlProgress, setModelDlProgress] = useState<Record<string,{percent:number;downloaded:number;total:number;speed:number}>>({});
   const downloadTimestampRef = useRef<{ts:number;bytes:number}>({ts:0,bytes:0});
   const [modelsDir, setModelsDir] = useState<string>('');
@@ -71,7 +71,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
   const [showDeepseekModal, setShowDeepseekModal] = useState(false);
   const [deepseekKeyStatus, setDeepseekKeyStatus] = useState('');  // success/error msg
-  const [deepseekRemaining, setDeepseekRemaining] = useState<number>(100);
+  const [deepseekRemaining, setDeepseekRemaining] = useState<number|null>(null);
   const [deepseekDailyLimit, setDeepseekDailyLimit] = useState(100);
 
   useEffect(() => {
@@ -142,7 +142,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           try {
             const downloading: string | null = await inv('get_downloading_model');
             if (downloading) {
-              setModelDownloading(downloading);
+              setModelDownloading(new Set([downloading]));
             } else {
               // 无下载中，验证已安装模型
               const installedModels = (status.models || []).filter((m: any) => m.installed && m.id !== 'rule_engine' && m.id !== 'deepseek_cloud');
@@ -253,7 +253,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
 
   const handleDownloadModel = async (modelId: string) => {
     if (!isTauriEnv()) return;
-    setModelDownloading(modelId);
+    setModelDownloading(prev => new Set(prev).add(modelId));
     try {
       const { invoke: inv } = await import('@tauri-apps/api/core');
       await inv('model_pull', { modelId });
@@ -262,7 +262,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
     } catch (e: any) {
       showStatus('下载失败: ' + (e?.toString() || ''));
     } finally {
-      setModelDownloading(null);
+      setModelDownloading(prev => { const n = new Set(prev); n.delete(modelId); return n; });
     }
   };
 
@@ -612,7 +612,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   <div className="model-card-name"><Cpu size={14} style={{marginRight:4,verticalAlign:'middle'}} />{m.name}</div>
                   <div className="model-card-meta">{m.size} · {m.description}</div>
                   {/* 下载进度条 */}
-                  {modelDownloading === m.id && modelDlProgress[m.id] && (
+                  {modelDownloading.has(m.id) && modelDlProgress[m.id] && (
                     <div style={{marginTop:6}}>
                       <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text-secondary)',marginBottom:3}}>
                         <span>
@@ -637,11 +637,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                     </>
                   ) : (
                     <button
-                      className={`model-btn-download${modelDownloading && modelDownloading !== m.id ? ' model-btn-disabled' : ''}`}
+                      className="model-btn-download"
                       onClick={() => handleDownloadModel(m.id)}
-                      disabled={modelDownloading !== null}
+                      disabled={modelDownloading.has(m.id)}
                     >
-                      {modelDownloading === m.id ? '⏳ 下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
+                      {modelDownloading.has(m.id) ? '⏳ 下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
                     </button>
                   )}
                 </div>
@@ -661,8 +661,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             <div className="setting-item">
               <span>DeepSeek 剩余次数</span>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{color: deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
-                  {`每日 ${deepseekDailyLimit} 次调用 · 今日剩余 ${deepseekRemaining} 次`}
+                <span style={{color: (deepseekRemaining ?? 100) > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
+                  {deepseekRemaining === null ? `每日 ${deepseekDailyLimit} 次调用 · 今日剩余 N次` : `每日 ${deepseekDailyLimit} 次调用 · 今日剩余 ${deepseekRemaining} 次`}
                 </span>
                 <button onClick={() => refreshDeepseekUsage()} style={{background:'none',border:'1px solid var(--border-color)',borderRadius:4,cursor:'pointer',padding:'2px 6px',fontSize:11,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:2}} title="刷新">↻ 刷新</button>
               </div>

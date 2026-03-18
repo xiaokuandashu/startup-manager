@@ -136,7 +136,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [engineInstalled, setEngineInstalled] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
-  const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number; daily_limit: number; has_custom_key: boolean}>({remaining: 100, daily_limit: 100, has_custom_key: false});
+  const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number|null; daily_limit: number; has_custom_key: boolean}>({remaining: null, daily_limit: 100, has_custom_key: false});
   const [showKeyPopup, setShowKeyPopup] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   const [keySaving, setKeySaving] = useState(false);
@@ -165,10 +165,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     return () => { unlisten(); };
   }, []);
 
-  // 加载模型列表
+  // 加载模型列表 + 同步下载状态
   useEffect(() => {
     loadModels();
     loadDeepseekUsage();
+    // 同步后台下载状态
+    (async () => {
+      try {
+        if ((window as any).__TAURI_INTERNALS__) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const downloading: string | null = await invoke('get_downloading_model');
+          if (downloading) setDownloadingModel(downloading);
+        }
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   const loadDeepseekUsage = async () => {
@@ -329,7 +339,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
               // 刷新剩余次数 — 先乐观递减，再从服务器刷新
-              setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, prev.remaining - 1) }));
+              setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, (prev.remaining ?? 100) - 1) }));
               loadDeepseekUsage();
             } else {
               const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
@@ -623,7 +633,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 </div>
                 {model.id === 'deepseek_cloud' && (
                   <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {`每日 ${deepseekUsage.daily_limit} 次调用 · 今日剩余 ${deepseekUsage.remaining} 次`}
+                    {deepseekUsage.remaining === null ? `每日 ${deepseekUsage.daily_limit} 次调用 · 今日剩余 N次` : `每日 ${deepseekUsage.daily_limit} 次调用 · 今日剩余 ${deepseekUsage.remaining} 次`}
                     <button onClick={(e) => { e.stopPropagation(); loadDeepseekUsage(); }} style={{background:'none',border:'1px solid var(--border-color)',borderRadius:4,cursor:'pointer',padding:'1px 5px',fontSize:10,color:'var(--text-secondary)'}} title="刷新">↻</button>
                   </div>
                 )}

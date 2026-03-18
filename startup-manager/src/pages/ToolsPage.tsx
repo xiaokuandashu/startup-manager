@@ -50,6 +50,7 @@ const ToolsPage: React.FC<ToolsPageProps> = ({ onOpenTool }) => {
   const [tools, setTools] = useState<ToolCard[]>(loadOrder);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const isDraggingRef = React.useRef(false);
 
   return (
     <div className="tools-page">
@@ -63,11 +64,22 @@ const ToolsPage: React.FC<ToolsPageProps> = ({ onOpenTool }) => {
             key={tool.type}
             className={`tool-card ${dragIdx === idx ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
             draggable
-            onClick={() => onOpenTool(tool.type)}
-            onDragStart={() => setDragIdx(idx)}
-            onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+            onClick={() => {
+              // 拖拽结束后不触发 click
+              if (isDraggingRef.current) { isDraggingRef.current = false; return; }
+              onOpenTool(tool.type);
+            }}
+            onDragStart={e => {
+              isDraggingRef.current = true;
+              setDragIdx(idx);
+              // Windows WebView2 必须设置 dataTransfer 才能正常拖拽
+              e.dataTransfer.setData('text/plain', String(idx));
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIdx(idx); }}
             onDragLeave={() => { if (dragOverIdx === idx) setDragOverIdx(null); }}
-            onDrop={() => {
+            onDrop={e => {
+              e.preventDefault();
               if (dragIdx !== null && dragIdx !== idx) {
                 const arr = [...tools];
                 const [moved] = arr.splice(dragIdx, 1);
@@ -78,7 +90,7 @@ const ToolsPage: React.FC<ToolsPageProps> = ({ onOpenTool }) => {
               setDragIdx(null);
               setDragOverIdx(null);
             }}
-            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); setTimeout(() => { isDraggingRef.current = false; }, 100); }}
             style={{ '--tool-color': tool.color } as React.CSSProperties}
           >
             <div className="tool-card-drag">⠿</div>

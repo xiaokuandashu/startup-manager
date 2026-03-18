@@ -334,7 +334,8 @@ fn is_model_valid(path: &str) -> bool {
 /// 可下载的模型列表
 fn available_models() -> Vec<LocalModel> {
     let mdir = models_dir();
-    vec![
+    let downloading_ids = get_downloading_models();
+    let mut models = vec![
         LocalModel {
             id: "rule_engine".into(),
             name: "📐 本地规则引擎".into(),
@@ -385,7 +386,15 @@ fn available_models() -> Vec<LocalModel> {
             download_url: build_download_url("gemma2-2b"),
             filename: "gemma-2-2b-it-Q4_K_M.gguf".into(),
         },
-    ]
+    ];
+    // 正在下载的模型不能显示为已安装
+    for model in &mut models {
+        if downloading_ids.contains(&model.id) {
+            model.installed = false;
+            model.downloading = true;
+        }
+    }
+    models
 }
 
 /// 引擎已内置，始终可用

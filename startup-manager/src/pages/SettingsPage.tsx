@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen, Loader2, Brain } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -627,7 +627,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (
               <div key={m.id} className="model-card">
                 <div className="model-card-info" style={{flex:1,minWidth:0}}>
-                  <div className="model-card-name"><Cpu size={14} style={{marginRight:4,verticalAlign:'middle'}} />{m.name}</div>
+                  <div className="model-card-name">{(() => {
+                    const icons: Record<string, any> = { 'qwen2.5-1.5b': Brain, 'phi3-mini': Brain, 'gemma2-2b': Brain };
+                    const Icon = icons[m.id] || Cpu;
+                    return <Icon size={14} style={{marginRight:4,verticalAlign:'middle'}} />;
+                  })()}{m.name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*/u, '')}</div>
                   <div className="model-card-meta">{m.size} · {m.description}</div>
                   {/* 下载进度条 */}
                   {modelDownloading.has(m.id) && modelDlProgress[m.id] && (
@@ -659,7 +663,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                       onClick={() => handleDownloadModel(m.id)}
                       disabled={modelDownloading.has(m.id)}
                     >
-                      {modelDownloading.has(m.id) ? '⏳ 下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
+                      {modelDownloading.has(m.id) ? <><Loader2 size={14} style={{marginRight:3,animation:'spin 1s linear infinite'}} /> 下载中...</> : <><Download size={14} style={{marginRight:3}} /> 下载</>}
                     </button>
                   )}
                 </div>

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen } from 'lucide-react';
+import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -608,7 +608,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             >
               <div className="ai-model-item-left">
                 <div className="ai-model-item-name">
-                  {model.id === 'deepseek_cloud' ? 'DeepSeek 云端' : model.name}
+                  {(() => {
+                    const icons: Record<string, any> = { 'deepseek_cloud': Cloud, 'rule_engine': Ruler, 'qwen2.5-1.5b': Brain, 'phi3-mini': Brain, 'gemma2-2b': Brain };
+                    const Icon = icons[model.id] || Cpu;
+                    return <Icon size={13} style={{marginRight:5,verticalAlign:'middle',opacity:0.7}} />;
+                  })()}
+                  {model.id === 'deepseek_cloud' ? 'DeepSeek 云端' : model.name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*/u, '')}
                   {model.id === 'deepseek_cloud' ? (
                     <span style={{
                       display: 'inline-block',
@@ -653,10 +658,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     <span className="ai-model-badge">切换</span>
                   )
                 ) : downloadingModel.has(model.id) ? (
-                  <span className="ai-model-badge download">⏳ 下载中... {downloadProgress[model.id] || 0}%</span>
+                  <span className="ai-model-badge download"><Loader2 size={12} style={{marginRight:3,animation:'spin 1s linear infinite'}} /> 下载中... {downloadProgress[model.id] || 0}%</span>
                 ) : (
                   <span className="ai-model-badge download">
-                    {model.size} · 下载
+                    <Download size={12} style={{marginRight:3}} /> {model.size} · 下载
                   </span>
                 )}
               </div>

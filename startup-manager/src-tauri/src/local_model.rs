@@ -489,6 +489,16 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         return Err(format!("模型文件不存在，请先下载: {}", model.name));
     }
 
+    // 检查模型文件大小，防止损坏/不完整的文件
+    if let Ok(meta) = std::fs::metadata(&model_path) {
+        let size_mb = meta.len() / (1024 * 1024);
+        if size_mb < 50 {
+            // 模型文件太小，可能是下载不完整
+            let _ = std::fs::remove_file(&model_path);
+            return Err(format!("模型文件已损坏（仅 {}MB），已自动删除。请在设置中重新下载 {}", size_mb, model.name));
+        }
+    }
+
     let log_file_path = format!("{}/llama-server.log", models_dir());
     let log_file = std::fs::File::create(&log_file_path).unwrap_or_else(|_| std::fs::File::create("/tmp/llama-server.log").unwrap());
 
@@ -570,7 +580,13 @@ pub fn stop_engine() {
             #[cfg(not(target_os = "windows"))]
             { let _ = Command::new("kill").arg(pid.to_string()).status(); }
             #[cfg(target_os = "windows")]
-            { let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).status(); }
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F"])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .status();
+            }
         }
     }
     if let Ok(mut m) = ACTIVE_MODEL.lock() {

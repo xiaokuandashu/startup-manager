@@ -15,6 +15,15 @@ interface UserInfo {
 
 type ThemeMode = 'light' | 'dark' | 'auto';
 
+/** 格式化字节数为人类可读 */
+const formatBytes = (bytes: number): string => {
+  if (bytes <= 0) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+};
+
 interface SettingsPageProps {
   onBack: () => void;
   themeMode: ThemeMode;
@@ -46,6 +55,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [models, setModels] = useState<{id:string;name:string;size:string;description:string;installed:boolean;downloading:boolean}[]>([]);
   const [engineRunning, setEngineRunning] = useState(false);
   const [modelDownloading, setModelDownloading] = useState<string|null>(null);
+  const [modelDlProgress, setModelDlProgress] = useState<Record<string,{percent:number;downloaded:number;total:number;speed:number}>>({});
+  const downloadTimestampRef = useRef<{ts:number;bytes:number}>({ts:0,bytes:0});
   const [modelsDir, setModelsDir] = useState<string>('');
   // mirror source management
   const [mirrorSources, setMirrorSources] = useState<{id:string;name:string;base_url:string;is_custom:boolean}[]>([]);
@@ -137,6 +148,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           setMirrorSources(sources || []);
           const curMirror: string = await inv('get_current_mirror');
           setCurrentMirror(curMirror || 'hf-mirror');
+        } catch { /* ignore */ }
+      }
+      // 监听模型下载进度事件
+      if (isTauriEnv()) {
+        try {
+          const { listen } = await import('@tauri-apps/api/event');
+          const unlisten = await listen<any>('model_download_progress', (ev) => {
+            const { model_id, progress, downloaded, total } = ev.payload;
+            const now = Date.now();
+            setModelDlProgress(prev => {
+              const prevData = prev[model_id];
+              let speed = prevData?.speed || 0;
+              if (prevData && prevData.downloaded > 0) {
+                const timeDiff = (now - (downloadTimestampRef.current.ts || now)) / 1000;
+                if (timeDiff > 0.5) {
+                  speed = (downloaded - downloadTimestampRef.current.bytes) / timeDiff;
+                  downloadTimestampRef.current = { ts: now, bytes: downloaded };
+                }
+              } else {
+                downloadTimestampRef.current = { ts: now, bytes: downloaded };
+              }
+              return { ...prev, [model_id]: { percent: progress, downloaded, total, speed } };
+            });
+            if (progress >= 100) {
+              setTimeout(() => {
+                setModelDlProgress(prev => { const n = {...prev}; delete n[model_id]; return n; });
+              }, 2000);
+            }
+          });
+          return () => { unlisten(); };
         } catch { /* ignore */ }
       }
       // 加载用户积分和 DeepSeek Key 状态
@@ -545,9 +586,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           <div className="model-list">
             {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (
               <div key={m.id} className="model-card">
-                <div className="model-card-info">
+                <div className="model-card-info" style={{flex:1,minWidth:0}}>
                   <div className="model-card-name"><Cpu size={14} style={{marginRight:4,verticalAlign:'middle'}} />{m.name}</div>
                   <div className="model-card-meta">{m.size} · {m.description}</div>
+                  {/* 下载进度条 */}
+                  {modelDownloading === m.id && modelDlProgress[m.id] && (
+                    <div style={{marginTop:6}}>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text-secondary)',marginBottom:3}}>
+                        <span>
+                          {formatBytes(modelDlProgress[m.id].downloaded)} / {formatBytes(modelDlProgress[m.id].total)}
+                        </span>
+                        <span>
+                          {modelDlProgress[m.id].speed > 0 ? `${formatBytes(modelDlProgress[m.id].speed)}/s` : '...'}
+                          {' · '}{modelDlProgress[m.id].percent}%
+                        </span>
+                      </div>
+                      <div style={{width:'100%',height:6,background:'var(--border-color)',borderRadius:3,overflow:'hidden'}}>
+                        <div style={{width:`${modelDlProgress[m.id].percent}%`,height:'100%',background:'linear-gradient(90deg,#0091FF,#00C9FF)',borderRadius:3,transition:'width 0.3s ease'}} />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="model-card-actions">
                   {m.installed ? (

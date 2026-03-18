@@ -1,65 +1,57 @@
-# 下载 llama.cpp Windows CPU 引擎到 binaries 目录
-# 打包前运行此脚本: powershell -ExecutionPolicy Bypass -File scripts/download-engine-win.ps1
+# Download llama.cpp Windows CPU engine to binaries directory
+# Run before building: powershell -ExecutionPolicy Bypass -File src-tauri/scripts/download-engine-win.ps1
 
 $ErrorActionPreference = "Stop"
 
 $binDir = Join-Path $PSScriptRoot ".." "binaries"
 $engineExe = Join-Path $binDir "llama-server-x86_64-pc-windows-msvc.exe"
 
-# 如果引擎已存在则跳过
 if (Test-Path $engineExe) {
-    Write-Host "✅ 引擎文件已存在，跳过下载" -ForegroundColor Green
+    Write-Host "[OK] Engine files already exist, skipping download" -ForegroundColor Green
     exit 0
 }
 
-Write-Host "⬇️  正在下载 llama.cpp Windows CPU 引擎..." -ForegroundColor Cyan
+Write-Host "[DOWNLOAD] Downloading llama.cpp Windows CPU engine..." -ForegroundColor Cyan
 
 $zipUrl = "https://ghfast.top/https://github.com/ggml-org/llama.cpp/releases/download/b8400/llama-b8400-bin-win-cpu-x64.zip"
 $zipPath = Join-Path $binDir "llama-engine.zip"
 
-# 创建目录
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
-# 下载
-Write-Host "📦 下载地址: $zipUrl"
+Write-Host "URL: $zipUrl"
 Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
 
-Write-Host "📂 正在解压..."
+Write-Host "[EXTRACT] Extracting files..."
 
-# 解压到临时目录
 $tempDir = Join-Path $binDir "_temp_engine"
 Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
 
-# 需要的文件
 $neededFiles = @(
     "llama-server.exe",
     "ggml.dll",
-    "ggml-base.dll", 
+    "ggml-base.dll",
     "ggml-cpu.dll",
     "ggml-rpc.dll",
     "llama.dll"
 )
 
-# 递归搜索并复制
 foreach ($fileName in $neededFiles) {
     $found = Get-ChildItem -Path $tempDir -Recurse -Filter $fileName | Select-Object -First 1
     if ($found) {
         if ($fileName -eq "llama-server.exe") {
-            # 重命名为 Tauri externalBin 格式
             Copy-Item $found.FullName -Destination $engineExe
-            Write-Host "  ✅ $fileName -> llama-server-x86_64-pc-windows-msvc.exe"
+            Write-Host "  [OK] $fileName -> llama-server-x86_64-pc-windows-msvc.exe" -ForegroundColor Green
         } else {
             Copy-Item $found.FullName -Destination (Join-Path $binDir $fileName)
-            Write-Host "  ✅ $fileName"
+            Write-Host "  [OK] $fileName" -ForegroundColor Green
         }
     } else {
-        Write-Host "  ⚠️  未找到: $fileName" -ForegroundColor Yellow
+        Write-Host "  [WARN] Not found: $fileName" -ForegroundColor Yellow
     }
 }
 
-# 清理
 Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
 Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "🎉 引擎文件下载完成！可以运行 npm run tauri build 打包了" -ForegroundColor Green
+Write-Host "[DONE] Engine downloaded. Run 'npm run tauri build' now." -ForegroundColor Green

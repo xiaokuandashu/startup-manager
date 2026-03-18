@@ -868,8 +868,8 @@ fn set_custom_mirror_cmd(name: String, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_downloading_model() -> Option<String> {
-    local_model::get_downloading_model()
+fn get_downloading_models() -> Vec<String> {
+    local_model::get_downloading_models()
 }
 
 #[tauri::command]
@@ -1057,7 +1057,7 @@ pub fn run() {
             get_current_mirror,
             set_mirror,
             set_custom_mirror_cmd,
-            get_downloading_model,
+            get_downloading_models,
             engine_start,
             engine_stop,
             download_engine,

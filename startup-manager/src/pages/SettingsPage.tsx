@@ -140,9 +140,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           setModelsDir(status.models_dir || '');
           // 检查是否有后台正在下载的模型
           try {
-            const downloading: string | null = await inv('get_downloading_model');
-            if (downloading) {
-              setModelDownloading(new Set([downloading]));
+            const downloading: string[] = await inv('get_downloading_models');
+            if (downloading.length > 0) {
+              setModelDownloading(new Set(downloading));
             } else {
               // 无下载中，验证已安装模型
               const installedModels = (status.models || []).filter((m: any) => m.installed && m.id !== 'rule_engine' && m.id !== 'deepseek_cloud');

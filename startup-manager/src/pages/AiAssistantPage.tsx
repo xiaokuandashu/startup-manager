@@ -134,7 +134,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineInstalled, setEngineInstalled] = useState(false);
-  const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
+  const [downloadingModel, setDownloadingModel] = useState<Set<string>>(new Set());
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number|null; daily_limit: number; has_custom_key: boolean}>({remaining: null, daily_limit: 100, has_custom_key: false});
   const [showKeyPopup, setShowKeyPopup] = useState(false);
@@ -174,8 +174,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       try {
         if ((window as any).__TAURI_INTERNALS__) {
           const { invoke } = await import('@tauri-apps/api/core');
-          const downloading: string | null = await invoke('get_downloading_model');
-          if (downloading) setDownloadingModel(downloading);
+          const downloading: string[] = await invoke('get_downloading_models');
+          if (downloading.length > 0) setDownloadingModel(new Set(downloading));
         }
       } catch { /* ignore */ }
     })();
@@ -208,7 +208,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   };
 
   const handlePullModel = async (modelId: string) => {
-    setDownloadingModel(modelId);
+    setDownloadingModel(prev => new Set(prev).add(modelId));
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -229,7 +229,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         responseType: 'error', timestamp: Date.now(),
       }]);
     } finally {
-      setDownloadingModel(null);
+      setDownloadingModel(prev => { const n = new Set(prev); n.delete(modelId); return n; });
     }
   };
 
@@ -594,7 +594,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   setActiveModel(model.id);
                   setShowModelPanel(false);
                   if (model.id === 'deepseek_cloud') loadDeepseekUsage();
-                } else if (!model.downloading && downloadingModel !== model.id) {
+                } else if (!model.downloading && !downloadingModel.has(model.id)) {
                   handlePullModel(model.id);
                 }
               }}
@@ -645,7 +645,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   ) : (
                     <span className="ai-model-badge">切换</span>
                   )
-                ) : downloadingModel === model.id ? (
+                ) : downloadingModel.has(model.id) ? (
                   <span className="ai-model-badge download">⏳ 下载中... {downloadProgress[model.id] || 0}%</span>
                 ) : (
                   <span className="ai-model-badge download">

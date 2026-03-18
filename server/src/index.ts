@@ -233,8 +233,8 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
 
     const data = await response.json() as any;
 
-    // 记录调用次数（仅全局 key 时计数）
-    if (!hasCustomKey) {
+    // 记录调用次数（使用官方云端 key 时计数，使用自有key不计数）
+    if (model !== 'deepseek_user') {
       try {
         // 使用东八区时间记录
         const offset = 8 * 60 * 60 * 1000;
@@ -250,7 +250,7 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
         console.log(`[DeepSeek] API使用记录失败: ${dbErr.message}`);
       }
     } else {
-      console.log(`[DeepSeek] 拥有自有Key，不计入服务端次数 user=${userId}`);
+      console.log(`[DeepSeek] 使用自有Key，不计入服务端次数 user=${userId}`);
     }
 
     res.json(data);

@@ -489,6 +489,35 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           </div>
         </div>
 
+        {/* 权益设置 */}
+        {user && (
+          <div className="settings-section">
+            <h3 className="section-title">权益设置</h3>
+            <div className="setting-item">
+              <span>积分余额</span>
+              <span className="tag-green" style={{fontWeight:600}}>{creditsBalance}</span>
+            </div>
+            <div className="setting-item">
+              <span>DeepSeek 剩余次数</span>
+              <span style={{color: deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
+                {`每日 ${deepseekDailyLimit} 次调用 · 剩余 ${deepseekRemaining} 次`}
+              </span>
+            </div>
+            <div className="setting-item">
+              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={hasDeepseekKey ? 'tag-green' : 'tag-gray'} style={{fontSize:12}}>
+                  {hasDeepseekKey ? `已配置 (${deepseekKeyMasked})` : '未配置'}
+                </span>
+                <button className="btn-check-update" style={{ fontSize: 12, padding: '4px 12px', marginTop: 0 }}
+                  onClick={() => { setShowDeepseekModal(true); setDeepseekKeyInput(''); setDeepseekKeyStatus(''); }}>
+                  {hasDeepseekKey ? '修改密钥' : '配置密钥'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 安全设置 */}
         <div className="settings-section">
           <h3 className="section-title">{t('securitySettings', lang)}</h3>
@@ -504,21 +533,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               {vipDisplay}
             </span>
           </div>
-          {/* #10: 积分余额 + DeepSeek 剩余次数 */}
-          {user && (
-            <>
-              <div className="setting-item">
-                <span>积分余额</span>
-                <span className="tag-green" style={{fontWeight:600}}>{creditsBalance}</span>
-              </div>
-              <div className="setting-item">
-                <span>DeepSeek 剩余次数</span>
-                <span style={{color: deepseekRemaining < 0 ? '#22c55e' : deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
-                  {deepseekRemaining < 0 ? '无限制（自有密钥）' : `${deepseekRemaining} / ${deepseekDailyLimit} 次/今日`}
-                </span>
-              </div>
-            </>
-          )}
           {user && (
             <div style={{ marginTop: 10 }}>
               <button className="btn-check-update" style={{ fontSize: 13, padding: '6px 14px' }} onClick={() => { setShowChangePwd(true); setPwdMsg(''); setOldPwd(''); setNewPwd(''); }}>
@@ -531,22 +545,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
         {/* 其他 */}
         <div className="settings-section">
           <h3 className="section-title">{t('other', lang)}</h3>
-
-          {/* #11: DeepSeek 密钥配置 — 独立设置项 */}
-          {user && (
-            <div className="setting-item">
-              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className={hasDeepseekKey ? 'tag-green' : 'tag-gray'} style={{fontSize:12}}>
-                  {hasDeepseekKey ? `已配置 (${deepseekKeyMasked})` : '未配置'}
-                </span>
-                <button className="btn-check-update" style={{ fontSize: 12, padding: '4px 12px', marginTop: 0 }}
-                  onClick={() => { setShowDeepseekModal(true); setDeepseekKeyInput(''); setDeepseekKeyStatus(''); }}>
-                  {hasDeepseekKey ? '修改密钥' : '配置密钥'}
-                </button>
-              </div>
-            </div>
-          )}
           {qqGroups.length > 0 && qqGroups.map(g => (
             <div className="setting-item" key={g.id}>
               <span>{g.name}</span>

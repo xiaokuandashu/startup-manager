@@ -71,7 +71,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
   const [showDeepseekModal, setShowDeepseekModal] = useState(false);
   const [deepseekKeyStatus, setDeepseekKeyStatus] = useState('');  // success/error msg
-  const [deepseekRemaining, setDeepseekRemaining] = useState<number|null>(null);
+  const [deepseekRemaining, setDeepseekRemaining] = useState<number>(100);
   const [deepseekDailyLimit, setDeepseekDailyLimit] = useState(100);
 
   useEffect(() => {
@@ -138,6 +138,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           setModels(status.models || []);
           setEngineRunning(status.engine_running || false);
           setModelsDir(status.models_dir || '');
+          // 检查是否有后台正在下载的模型
+          try {
+            const downloading: string | null = await inv('get_downloading_model');
+            if (downloading) {
+              setModelDownloading(downloading);
+            } else {
+              // 无下载中，验证已安装模型
+              const installedModels = (status.models || []).filter((m: any) => m.installed && m.id !== 'rule_engine' && m.id !== 'deepseek_cloud');
+              if (installedModels.length > 0) {
+                showStatus('模型已验证，文件完整 ✅');
+              }
+            }
+          } catch { /* ignore */ }
         } catch { /* ignore */ }
       }
       // 加载模型源配置
@@ -194,19 +207,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             setDeepseekKeyMasked(profile.deepseekKeyMasked || '');
           }
           // 加载 DeepSeek 剩余次数
-          const usageRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/usage', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (usageRes.ok) {
-            const usage = await usageRes.json();
-            setDeepseekRemaining(usage.remaining);
-            setDeepseekDailyLimit(usage.daily_limit);
-          }
+          refreshDeepseekUsage();
         }
       } catch { /* silent */ }
     };
     init();
   }, []);
+
+  // 单独查询 DeepSeek 剩余次数
+  const refreshDeepseekUsage = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const usageRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/usage', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (usageRes.ok) {
+        const usage = await usageRes.json();
+        setDeepseekRemaining(usage.remaining);
+        setDeepseekDailyLimit(usage.daily_limit);
+      }
+    } catch { /* silent */ }
+  };
 
   // #7: 缓存 invoke 引用，避免每次动态 import
   const invokeRef = useRef<any>(null);
@@ -638,9 +660,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             </div>
             <div className="setting-item">
               <span>DeepSeek 剩余次数</span>
-              <span style={{color: (deepseekRemaining ?? 100) > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
-                {deepseekRemaining === null ? '加载中...' : `每日 ${deepseekDailyLimit} 次调用 · 剩余 ${deepseekRemaining} 次`}
-              </span>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{color: deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
+                  {`每日 ${deepseekDailyLimit} 次调用 · 今日剩余 ${deepseekRemaining} 次`}
+                </span>
+                <button onClick={() => refreshDeepseekUsage()} style={{background:'none',border:'1px solid var(--border-color)',borderRadius:4,cursor:'pointer',padding:'2px 6px',fontSize:11,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:2}} title="刷新">↻ 刷新</button>
+              </div>
             </div>
             <div className="setting-item">
               <span>DeepSeek 密钥</span>

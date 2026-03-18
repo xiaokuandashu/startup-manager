@@ -59,6 +59,12 @@ lazy_static::lazy_static! {
     static ref LLAMA_PID: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
     static ref ACTIVE_MODEL: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     static ref CUSTOM_MODELS_DIR: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    static ref DOWNLOADING_MODEL: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+}
+
+/// 获取当前正在下载的模型 ID
+pub fn get_downloading_model() -> Option<String> {
+    DOWNLOADING_MODEL.lock().ok().and_then(|g| g.clone())
 }
 
 /// 默认模型存储目录
@@ -653,6 +659,11 @@ pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<St
         return Err("该模型无需下载".into());
     }
 
+    // 记录当前正在下载的模型
+    if let Ok(mut g) = DOWNLOADING_MODEL.lock() {
+        *g = Some(model_id.to_string());
+    }
+
     let dir = models_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败: {}", e))?;
 
@@ -718,6 +729,11 @@ pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<St
     if total_size > 0 && downloaded < total_size {
         let _ = std::fs::remove_file(&dest);
         return Err(format!("下载不完整（{}/{}字节），已清理。请重试", downloaded, total_size));
+    }
+
+    // 清除下载状态
+    if let Ok(mut g) = DOWNLOADING_MODEL.lock() {
+        *g = None;
     }
 
     Ok(format!("模型 {} 下载完成", model.name))

@@ -868,6 +868,11 @@ fn set_custom_mirror_cmd(name: String, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_downloading_model() -> Option<String> {
+    local_model::get_downloading_model()
+}
+
+#[tauri::command]
 async fn engine_start(model_id: String) -> Result<(), String> {
     local_model::start_engine(&model_id).await
 }
@@ -1052,6 +1057,7 @@ pub fn run() {
             get_current_mirror,
             set_mirror,
             set_custom_mirror_cmd,
+            get_downloading_model,
             engine_start,
             engine_stop,
             download_engine,

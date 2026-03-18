@@ -306,6 +306,25 @@ fn build_download_url(model_id: &str) -> String {
     }
 }
 
+/// 检查模型文件是否完整有效（存在且大于 50MB）
+fn is_model_valid(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    if !p.exists() { return false; }
+    match std::fs::metadata(p) {
+        Ok(m) => {
+            let size_mb = m.len() / (1024 * 1024);
+            if size_mb < 50 {
+                // 文件太小，自动清理
+                let _ = std::fs::remove_file(p);
+                false
+            } else {
+                true
+            }
+        }
+        Err(_) => false,
+    }
+}
+
 /// 可下载的模型列表
 fn available_models() -> Vec<LocalModel> {
     let mdir = models_dir();
@@ -335,7 +354,7 @@ fn available_models() -> Vec<LocalModel> {
             name: "🧠 Qwen2.5-1.5B".into(),
             size: "934MB".into(),
             description: "通义千问，中文最佳，推荐首选".into(),
-            installed: std::path::Path::new(&format!("{}/qwen2.5-1.5b-instruct-q4_k_m.gguf", mdir)).exists(),
+            installed: is_model_valid(&format!("{}/qwen2.5-1.5b-instruct-q4_k_m.gguf", mdir)),
             downloading: false,
             download_url: build_download_url("qwen2.5-1.5b"),
             filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
@@ -345,7 +364,7 @@ fn available_models() -> Vec<LocalModel> {
             name: "🧠 Phi-3 Mini".into(),
             size: "2.2GB".into(),
             description: "微软小模型，推理能力强".into(),
-            installed: std::path::Path::new(&format!("{}/phi-3-mini-4k-instruct-q4.gguf", mdir)).exists(),
+            installed: is_model_valid(&format!("{}/phi-3-mini-4k-instruct-q4.gguf", mdir)),
             downloading: false,
             download_url: build_download_url("phi3-mini"),
             filename: "phi-3-mini-4k-instruct-q4.gguf".into(),
@@ -355,7 +374,7 @@ fn available_models() -> Vec<LocalModel> {
             name: "🧠 Gemma 2 2B".into(),
             size: "1.5GB".into(),
             description: "Google 轻量级模型".into(),
-            installed: std::path::Path::new(&format!("{}/gemma-2-2b-it-Q4_K_M.gguf", mdir)).exists(),
+            installed: is_model_valid(&format!("{}/gemma-2-2b-it-Q4_K_M.gguf", mdir)),
             downloading: false,
             download_url: build_download_url("gemma2-2b"),
             filename: "gemma-2-2b-it-Q4_K_M.gguf".into(),

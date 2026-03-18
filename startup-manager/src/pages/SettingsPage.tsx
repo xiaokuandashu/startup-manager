@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { t, getCurrentLanguage, setCurrentLanguage, LANGUAGES, Language } from '../i18n';
 import AgreementModal from '../components/AgreementModal';
-import { ArrowLeft, Sun, Moon, Monitor, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen, Key } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Monitor, Download, Square, CheckCircle2, Cpu, Trash2, FolderOpen } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -71,7 +71,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
   const [showDeepseekModal, setShowDeepseekModal] = useState(false);
   const [deepseekKeyStatus, setDeepseekKeyStatus] = useState('');  // success/error msg
-  const [deepseekRemaining, setDeepseekRemaining] = useState<number>(-1);
+  const [deepseekRemaining, setDeepseekRemaining] = useState<number|null>(null);
   const [deepseekDailyLimit, setDeepseekDailyLimit] = useState(100);
 
   useEffect(() => {
@@ -638,12 +638,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
             </div>
             <div className="setting-item">
               <span>DeepSeek 剩余次数</span>
-              <span style={{color: deepseekRemaining > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
-                {`每日 ${deepseekDailyLimit} 次调用 · 剩余 ${deepseekRemaining} 次`}
+              <span style={{color: (deepseekRemaining ?? 100) > 20 ? 'var(--text-primary)' : '#ef4444', fontWeight: 500}}>
+                {deepseekRemaining === null ? '加载中...' : `每日 ${deepseekDailyLimit} 次调用 · 剩余 ${deepseekRemaining} 次`}
               </span>
             </div>
             <div className="setting-item">
-              <span><Key size={14} style={{marginRight:4,verticalAlign:'middle'}} /> DeepSeek 密钥</span>
+              <span>DeepSeek 密钥</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className={hasDeepseekKey ? 'tag-green' : 'tag-gray'} style={{fontSize:12}}>
                   {hasDeepseekKey ? `已配置 (${deepseekKeyMasked})` : '未配置'}

@@ -354,6 +354,38 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 在 Windows 上确保 DLL 文件与 llama-server.exe 在同一个目录
+#[cfg(target_os = "windows")]
+fn ensure_dlls_beside_exe(exe_path: &str) {
+    let exe_dir = std::path::Path::new(exe_path).parent().unwrap_or(std::path::Path::new("."));
+    
+    // 检查同级 resources/binaries 目录（Tauri NSIS 安装后的资源目录）
+    let possible_resource_dirs = vec![
+        exe_dir.join("resources").join("binaries"),
+        exe_dir.join("resources"),
+        exe_dir.join("..").join("resources").join("binaries"),
+        exe_dir.join("..").join("resources"),
+    ];
+    
+    let dll_names = ["ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "ggml.dll", "llama.dll"];
+    
+    for dll_name in &dll_names {
+        let target = exe_dir.join(dll_name);
+        if target.exists() {
+            continue; // 已经存在，跳过
+        }
+        
+        // 从资源目录复制
+        for res_dir in &possible_resource_dirs {
+            let src = res_dir.join(dll_name);
+            if src.exists() {
+                let _ = std::fs::copy(&src, &target);
+                break;
+            }
+        }
+    }
+}
+
 /// 启动内置 llama-server 加载指定模型
 pub async fn start_engine(model_id: &str) -> Result<(), String> {
     stop_engine();
@@ -373,6 +405,10 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     // 使用内置的 llama-server 二进制
     let bin = resolve_sidecar_path()?;
 
+    // Windows: 确保 DLL 文件与 exe 在同一目录
+    #[cfg(target_os = "windows")]
+    ensure_dlls_beside_exe(&bin);
+
     let mut cmd = Command::new(&bin);
     cmd.args([
         "--model", &model_path,
@@ -385,10 +421,17 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     .stdout(log_file.try_clone().unwrap())
     .stderr(log_file);
 
+    // Windows: 把 exe 所在目录加入 PATH，确保能找到 DLL
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        if let Some(exe_dir) = std::path::Path::new(&bin).parent() {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let new_path = format!("{};{}", exe_dir.to_string_lossy(), current_path);
+            cmd.env("PATH", new_path);
+        }
     }
 
     let mut child = cmd.spawn()

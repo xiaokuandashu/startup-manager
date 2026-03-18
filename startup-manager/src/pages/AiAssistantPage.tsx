@@ -518,10 +518,17 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {showModelPanel && (
         <div className="ai-model-panel">
           <div className="ai-model-panel-title">
-            选择 AI 模型
-            <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: engineRunning ? '#22c55e' : '#9ca3af' }}>
-              {engineRunning ? '● 引擎运行中' : engineInstalled ? '○ 引擎已安装' : '○ 引擎未安装'}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              选择 AI 模型
+              <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: engineRunning ? '#22c55e' : '#9ca3af' }}>
+                {engineRunning ? '● 引擎运行中' : engineInstalled ? '○ 引擎已安装' : '○ 引擎未安装'}
+              </span>
+            </div>
+            <button className="modal-close" onClick={() => setShowModelPanel(false)} style={{ padding: '4px', margin: '-4px' }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
           {models.map(model => (
             <div

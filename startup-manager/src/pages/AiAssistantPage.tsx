@@ -531,17 +531,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             '请选择 AI 模型'
           ) : activeModel === 'deepseek_cloud' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <Cloud size={14} style={{marginRight:4,opacity:0.7}} />
               DeepSeek 云端
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#fef3c7', color: '#b45309', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>官方</span>
             </span>
           ) : activeModel === 'deepseek_user' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <Cloud size={14} style={{marginRight:4,opacity:0.7}} />
               DeepSeek 云端
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#dcfce7', color: '#166534', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>自己</span>
             </span>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              {models.find(m => m.id === activeModel)?.name || '未知模型'}
+              <Brain size={14} style={{marginRight:4,opacity:0.7}} />
+              {(models.find(m => m.id === activeModel)?.name || '未知模型').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*/u, '')}
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#eff6ff', color: '#3b82f6', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>本地</span>
             </span>
           )}
@@ -686,6 +689,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               {deepseekUsage.has_custom_key ? (
                 <>
                   <div className="ai-model-item-name">
+                    <Cloud size={13} style={{marginRight:5,verticalAlign:'middle',opacity:0.7}} />
                     DeepSeek 云端
                     <span style={{
                       display: 'inline-block',
@@ -707,6 +711,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               ) : (
                 <>
                   <div className="ai-model-item-name">
+                    <Cloud size={13} style={{marginRight:5,verticalAlign:'middle',opacity:0.7}} />
                     DeepSeek 云端
                     <span style={{
                       display: 'inline-block',

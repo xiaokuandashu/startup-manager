@@ -66,8 +66,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [customMirrorUrl, setCustomMirrorUrl] = useState('');
   // credits & deepseek key
   const [creditsBalance, setCreditsBalance] = useState(0);
-  const [hasDeepseekKey, setHasDeepseekKey] = useState(false);
-  const [deepseekKeyMasked, setDeepseekKeyMasked] = useState('');
+  const [hasDeepseekKey, setHasDeepseekKey] = useState(() => localStorage.getItem('hasDeepseekKey') === 'true');
+  const [deepseekKeyMasked, setDeepseekKeyMasked] = useState(() => localStorage.getItem('deepseekKeyMasked') || '');
   const [deepseekKeyInput, setDeepseekKeyInput] = useState('');
   const [showDeepseekModal, setShowDeepseekModal] = useState(false);
   const [deepseekKeyStatus, setDeepseekKeyStatus] = useState('');  // success/error msg
@@ -203,8 +203,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           if (res.ok) {
             const profile = await res.json();
             setCreditsBalance(profile.credits?.balance || 0);
-            setHasDeepseekKey(profile.hasDeepseekKey || false);
-            setDeepseekKeyMasked(profile.deepseekKeyMasked || '');
+            const hasKey = profile.hasDeepseekKey || false;
+            const masked = profile.deepseekKeyMasked || '';
+            setHasDeepseekKey(hasKey);
+            setDeepseekKeyMasked(masked);
+            localStorage.setItem('hasDeepseekKey', String(hasKey));
+            localStorage.setItem('deepseekKeyMasked', masked);
           }
           // 加载 DeepSeek 剩余次数
           refreshDeepseekUsage();
@@ -220,6 +224,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       const { hasKey, masked } = e.detail || {};
       setHasDeepseekKey(!!hasKey);
       setDeepseekKeyMasked(masked || '');
+      localStorage.setItem('hasDeepseekKey', String(!!hasKey));
+      localStorage.setItem('deepseekKeyMasked', masked || '');
       refreshDeepseekUsage();
     };
     window.addEventListener('deepseek-key-changed', handler);
@@ -844,6 +850,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                       body: JSON.stringify({ key: '' }),
                     });
                     setHasDeepseekKey(false); setDeepseekKeyMasked(''); setDeepseekRemaining(100);
+                    localStorage.setItem('hasDeepseekKey', 'false');
+                    localStorage.setItem('deepseekKeyMasked', '');
                     setDeepseekKeyStatus('✅ 密钥已清除');
                     window.dispatchEvent(new CustomEvent('deepseek-key-changed', { detail: { hasKey: false, masked: '' } }));
                     setTimeout(() => { setShowDeepseekModal(false); setDeepseekKeyStatus(''); }, 1500);
@@ -869,6 +877,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   const k = deepseekKeyInput.trim();
                   const masked = k.length > 8 ? k.substring(0,4) + '****' + k.substring(k.length-4) : '****';
                   setDeepseekKeyMasked(masked);
+                  localStorage.setItem('hasDeepseekKey', 'true');
+                  localStorage.setItem('deepseekKeyMasked', masked);
                   setDeepseekKeyInput(''); setDeepseekRemaining(null);
                   setDeepseekKeyStatus('✅ 密钥配置成功');
                   window.dispatchEvent(new CustomEvent('deepseek-key-changed', { detail: { hasKey: true, masked } }));

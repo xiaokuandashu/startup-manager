@@ -432,10 +432,22 @@ pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<St
 
     let dest = format!("{}/{}", dir, model.filename);
     if std::path::Path::new(&dest).exists() {
-        return Ok("模型已下载".into());
+        // 检查文件大小，防止残留的空文件
+        if let Ok(meta) = std::fs::metadata(&dest) {
+            if meta.len() > 1024 * 1024 {
+                return Ok("模型已下载".into());
+            }
+            // 文件太小，删除重新下载
+            let _ = std::fs::remove_file(&dest);
+        }
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .user_agent("StartupManager/1.0")
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
     let res = client.get(&model.download_url)
         .send().await
         .map_err(|e| format!("下载请求失败: {}", e))?;
@@ -453,13 +465,16 @@ pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<St
     let mut last_percent = 0;
     
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("读取流失败: {}", e))?;
+        let chunk = chunk.map_err(|e| {
+            // 下载中断，清理不完整文件
+            let _ = std::fs::remove_file(&dest);
+            format!("读取流失败: {}", e)
+        })?;
         file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
         downloaded += chunk.len() as u64;
 
         if total_size > 0 {
             let percent = ((downloaded as f64 / total_size as f64) * 100.0) as u32;
-            // 降低事件发送频率
             if percent > last_percent {
                 last_percent = percent;
                 let _ = app.emit("model_download_progress", serde_json::json!({
@@ -470,6 +485,13 @@ pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<St
                 }));
             }
         }
+    }
+
+    // 验证下载完整性
+    drop(file);
+    if total_size > 0 && downloaded < total_size {
+        let _ = std::fs::remove_file(&dest);
+        return Err(format!("下载不完整（{}/{}字节），已清理。请重试", downloaded, total_size));
     }
 
     Ok(format!("模型 {} 下载完成", model.name))

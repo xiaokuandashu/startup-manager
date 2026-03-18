@@ -58,8 +58,8 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('toolTabs');
       if (saved) {
         const parsed = JSON.parse(saved) as ToolTab[];
-        // 恢复 React Node (icon)，因为 JSON.stringify 会丢弃 JSX
-        return parsed.map(tab => {
+        // 只恢复被锁定（固定）的标签页
+        return parsed.filter(tab => tab.locked).map(tab => {
           const meta = TOOL_META[tab.type];
           return meta ? { ...tab, icon: meta.icon, title: tab.title || meta.title } : tab;
         });
@@ -75,9 +75,10 @@ const App: React.FC = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
 
-  // 监听标签页变动，并保存到本地
+  // 监听标签页变动，只保存被锁定的标签
   useEffect(() => {
-    localStorage.setItem('toolTabs', JSON.stringify(toolTabs));
+    const lockedTabs = toolTabs.filter(t => t.locked);
+    localStorage.setItem('toolTabs', JSON.stringify(lockedTabs));
   }, [toolTabs]);
 
   useEffect(() => {

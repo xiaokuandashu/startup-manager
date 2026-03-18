@@ -355,18 +355,16 @@ fn launch_app(app_path: String) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        if app_path.ends_with(".lnk") {
-            Command::new("cmd")
-                .args(["/C", "start", "", &app_path])
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn()
-                .map_err(|e| format!("启动失败: {}", e))?;
-        } else {
-            Command::new(&app_path)
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn()
-                .map_err(|e| format!("启动失败: {}", e))?;
-        }
+        // 使用 cmd.exe /S /C "chcp 65001 >nul & <command>" 运行任意包含中文及参数的路径
+        // 这样可以原生支持参数传递、含有空格的路径，以及 UTF-8 编码的 .bat 脚本（防乱码）
+        let cmd_str = format!("chcp 65001 >nul & {}", app_path);
+        let mut cmd = Command::new("cmd");
+        cmd.raw_arg("/S")
+           .raw_arg("/C")
+           .raw_arg(format!("\"{}\"", cmd_str))
+           .creation_flags(CREATE_NO_WINDOW);
+
+        cmd.spawn().map_err(|e| format!("启动失败: {}", e))?;
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -823,8 +821,8 @@ async fn model_list() -> Result<Vec<local_model::LocalModel>, String> {
 }
 
 #[tauri::command]
-async fn model_pull(model_id: String) -> Result<String, String> {
-    local_model::download_model(&model_id).await
+async fn model_pull(app: tauri::AppHandle, model_id: String) -> Result<String, String> {
+    local_model::download_model(&app, &model_id).await
 }
 
 #[tauri::command]

@@ -135,6 +135,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineInstalled, setEngineInstalled] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [deepseekUsage, setDeepseekUsage] = useState<{remaining: number; daily_limit: number; has_custom_key: boolean}>({remaining: 100, daily_limit: 100, has_custom_key: false});
   const [showKeyPopup, setShowKeyPopup] = useState(false);
   const [keyInput, setKeyInput] = useState('');
@@ -142,6 +143,27 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [keyMsg, setKeyMsg] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 监听模型下载进度
+  useEffect(() => {
+    let unlisten: () => void = () => {};
+    const setupListener = async () => {
+      try {
+        if ((window as any).__TAURI_INTERNALS__) {
+          const { listen } = await import('@tauri-apps/api/event');
+          const unlistenFn = await listen<{ model_id: string; progress: number }>('model_download_progress', (event) => {
+            setDownloadProgress(prev => ({
+              ...prev,
+              [event.payload.model_id]: event.payload.progress
+            }));
+          });
+          unlisten = unlistenFn;
+        }
+      } catch { /* silent */ }
+    };
+    setupListener();
+    return () => { unlisten(); };
+  }, []);
 
   // 加载模型列表
   useEffect(() => {
@@ -552,7 +574,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     <span className="ai-model-badge">切换</span>
                   )
                 ) : downloadingModel === model.id ? (
-                  <span className="ai-model-badge download">⏳ 下载中...</span>
+                  <span className="ai-model-badge download">⏳ 下载中... {downloadProgress[model.id] || 0}%</span>
                 ) : (
                   <span className="ai-model-badge download">
                     {model.size} · 下载

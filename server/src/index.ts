@@ -215,7 +215,20 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
     if (!response.ok) {
       const errText = await response.text();
       console.log(`[DeepSeek] API 错误: ${response.status} ${errText}`);
-      return res.status(response.status).json({ error: `DeepSeek API 错误: ${response.status}` });
+      
+      let friendlyError = `DeepSeek API 错误: ${response.status}`;
+      if (response.status === 401) {
+         friendlyError = model === 'deepseek_user' 
+            ? "您的自有密钥不正确或已失效，请重新配置" 
+            : "官方云端 API 密钥失效，请联系管理员更新配置";
+      } else if (response.status === 402 || response.status === 429) {
+         friendlyError = model === 'deepseek_user'
+            ? "您的 DeepSeek 账户余额不足或请求过载"
+            : "官方云端额度不足或请求受限，请联系管理员";
+      }
+
+      // 避免转发 401 干扰前端的 JWT Auth 解析，使用 502 (Bad Gateway)
+      return res.status(502).json({ error: friendlyError });
     }
 
     const data = await response.json() as any;

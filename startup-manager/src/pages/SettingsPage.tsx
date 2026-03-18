@@ -125,7 +125,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
       }
       // 加载用户积分和 DeepSeek Key 状态
       try {
-        const token = localStorage.getItem('auth_token');
+        const token = localStorage.getItem('token');
         if (token) {
           const res = await fetch('https://bt.aacc.fun:8888/api/activation/profile', {
             headers: { Authorization: `Bearer ${token}` },
@@ -620,7 +620,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                 <button className="btn-check-update" style={{ fontSize: 13, padding: '8px 20px', marginTop: 0 }} onClick={async () => {
                   if (!newPwd || newPwd.length < 6) { setPwdMsg(lang === 'zh' ? '新密码至少6位' : 'Min 6 chars'); return; }
                   try {
-                    const token = localStorage.getItem('auth_token');
+                    const token = localStorage.getItem('token');
                     const resp = await fetch('https://bt.aacc.fun:8888/api/auth/change-password', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -664,7 +664,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               {hasDeepseekKey && (
                 <button onClick={async () => {
                   try {
-                    const token = localStorage.getItem('auth_token');
+                    const token = localStorage.getItem('token');
                     await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
                       method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                       body: JSON.stringify({ key: '' }),
@@ -684,7 +684,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               <button className="btn-check-update" style={{ fontSize: 13, padding: '8px 20px', marginTop: 0 }} onClick={async () => {
                 if (!deepseekKeyInput.trim()) { setDeepseekKeyStatus('请输入 API Key'); return; }
                 try {
-                  const token = localStorage.getItem('auth_token');
+                  const token = localStorage.getItem('token');
                   const resp = await fetch('https://bt.aacc.fun:8888/api/activation/profile/deepseek-key', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({ key: deepseekKeyInput.trim() }),

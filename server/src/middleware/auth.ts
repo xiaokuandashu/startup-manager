@@ -16,11 +16,17 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     return res.status(401).json({ error: '请先登录' });
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; type: string };
+    // 先尝试忽略过期验证（用户token永不过期）
+    const decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true }) as { id: string; type: string };
+    // 管理员token仍然检查过期
+    if (decoded.type === 'admin') {
+      jwt.verify(token, JWT_SECRET); // 会检查exp
+    }
     req.userId = decoded.id;
     req.isAdmin = decoded.type === 'admin';
     next();
-  } catch {
+  } catch (err: any) {
+    console.error(`[Auth] JWT验证失败: ${err.name} - ${err.message}. Token: ${token.substring(0, 20)}...`);
     return res.status(401).json({ error: '登录已过期' });
   }
 }

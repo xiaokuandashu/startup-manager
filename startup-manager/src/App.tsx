@@ -53,10 +53,40 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [searchQuery, setSearchQuery] = useState('');
   // 工具标签页状态
-  const [toolTabs, setToolTabs] = useState<ToolTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [toolTabs, setToolTabs] = useState<ToolTab[]>(() => {
+    try {
+      const saved = localStorage.getItem('toolTabs');
+      if (saved) {
+        const parsed = JSON.parse(saved) as ToolTab[];
+        // 恢复 React Node (icon)，因为 JSON.stringify 会丢弃 JSX
+        return parsed.map(tab => {
+          const meta = TOOL_META[tab.type];
+          return meta ? { ...tab, icon: meta.icon, title: tab.title || meta.title } : tab;
+        });
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeTabId, setActiveTabId] = useState<string | null>(() => {
+    return localStorage.getItem('activeTabId') || null;
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [showVip, setShowVip] = useState(false);
+
+  // 监听标签页变动，并保存到本地
+  useEffect(() => {
+    localStorage.setItem('toolTabs', JSON.stringify(toolTabs));
+  }, [toolTabs]);
+
+  useEffect(() => {
+    if (activeTabId) {
+      localStorage.setItem('activeTabId', activeTabId);
+    } else {
+      localStorage.removeItem('activeTabId');
+    }
+  }, [activeTabId]);
 
   // 全局语言状态
   const [lang, setLang] = useState<Language>(getCurrentLanguage());

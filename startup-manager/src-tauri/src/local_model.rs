@@ -278,7 +278,11 @@ fn resolve_sidecar_path() -> Result<String, String> {
 }
 
 /// 下载 GGUF 模型
-pub async fn download_model(model_id: &str) -> Result<String, String> {
+pub async fn download_model(app: &tauri::AppHandle, model_id: &str) -> Result<String, String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+    use tauri::Emitter;
+
     let models = available_models();
     let model = models.iter().find(|m| m.id == model_id)
         .ok_or("模型不存在")?;
@@ -295,14 +299,41 @@ pub async fn download_model(model_id: &str) -> Result<String, String> {
         return Ok("模型已下载".into());
     }
 
-    let status = Command::new("curl")
-        .args(["-L", "-o", &dest, "--progress-bar", &model.download_url])
-        .status()
-        .map_err(|e| format!("下载失败: {}", e))?;
+    let client = reqwest::Client::new();
+    let res = client.get(&model.download_url)
+        .send().await
+        .map_err(|e| format!("下载请求失败: {}", e))?;
 
-    if !status.success() {
-        let _ = std::fs::remove_file(&dest);
-        return Err("模型下载失败".into());
+    if !res.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", res.status()));
+    }
+
+    let total_size = res.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    
+    let mut stream = res.bytes_stream();
+    let mut file = std::fs::File::create(&dest).map_err(|e| format!("创建文件失败: {}", e))?;
+
+    let mut last_percent = 0;
+    
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取流失败: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        if total_size > 0 {
+            let percent = ((downloaded as f64 / total_size as f64) * 100.0) as u32;
+            // 降低事件发送频率
+            if percent > last_percent {
+                last_percent = percent;
+                let _ = app.emit("model_download_progress", serde_json::json!({
+                    "model_id": model_id,
+                    "progress": percent,
+                    "downloaded": downloaded,
+                    "total": total_size
+                }));
+            }
+        }
     }
 
     Ok(format!("模型 {} 下载完成", model.name))
@@ -342,18 +373,25 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     // 使用内置的 llama-server 二进制
     let bin = resolve_sidecar_path()?;
 
-    let mut child = Command::new(&bin)
-        .args([
-            "--model", &model_path,
-            "--host", LLAMA_HOST,
-            "--port", &LLAMA_PORT.to_string(),
-            "--ctx-size", "2048",
-            "--n-predict", "512",
-            "--threads", "4",
-        ])
-        .stdout(log_file.try_clone().unwrap())
-        .stderr(log_file)
-        .spawn()
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "--model", &model_path,
+        "--host", LLAMA_HOST,
+        "--port", &LLAMA_PORT.to_string(),
+        "--ctx-size", "2048",
+        "--n-predict", "512",
+        "--threads", "4",
+    ])
+    .stdout(log_file.try_clone().unwrap())
+    .stderr(log_file);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = cmd.spawn()
         .map_err(|e| format!("启动引擎进程失败: {}", e))?;
 
     let pid = child.id();

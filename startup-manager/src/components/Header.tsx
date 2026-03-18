@@ -92,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({
           {toolTabs.map(tab => (
             <div
               key={tab.id}
-              className={`page-tab tool-tab-inline ${activeTabId === tab.id ? 'active' : ''} ${dragTabId === tab.id ? 'dragging' : ''}`}
+              className={`page-tab tool-tab-inline ${currentPage === 'tools' && activeTabId === tab.id ? 'active' : ''} ${dragTabId === tab.id ? 'dragging' : ''}`}
               draggable
               onClick={() => onTabClick(tab.id)}
               onDragStart={() => setDragTabId(tab.id)}

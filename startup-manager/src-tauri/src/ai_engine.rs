@@ -11,6 +11,7 @@ pub struct AiTaskResult {
     pub schedule_days: Vec<u8>, // 周几 [1..7] 或月几号
     pub enabled: bool,
     pub confidence: f32,        // 置信度 0.0~1.0
+    pub recording_name: Option<String>,
 }
 
 /// AI 回复消息
@@ -32,9 +33,9 @@ pub struct AppInfo {
 /// 意图类型
 #[derive(Debug)]
 enum Intent {
-    OpenApp { app_name: String, schedule: Schedule },
-    RunScript { path: String, schedule: Schedule },
-    OpenPath { path: String, schedule: Schedule },
+    OpenApp { app_name: String, schedule: Schedule, recording_name: Option<String> },
+    RunScript { path: String, schedule: Schedule, recording_name: Option<String> },
+    OpenPath { path: String, schedule: Schedule, recording_name: Option<String> },
     ListTasks,
     DeleteTask { name: String },
     Help,
@@ -73,14 +74,14 @@ pub fn parse_intent(input: &str, installed_apps: &[AppInfo]) -> AiResponse {
     let intent = classify_intent(input_trim, installed_apps);
 
     match intent {
-        Intent::OpenApp { app_name, schedule } => {
-            handle_open_app(&app_name, &schedule, installed_apps)
+        Intent::OpenApp { app_name, schedule, recording_name } => {
+            handle_open_app(&app_name, &schedule, recording_name, installed_apps)
         }
-        Intent::RunScript { path, schedule } => {
-            handle_run_script(&path, &schedule)
+        Intent::RunScript { path, schedule, recording_name } => {
+            handle_run_script(&path, &schedule, recording_name)
         }
-        Intent::OpenPath { path, schedule } => {
-            handle_open_path(&path, &schedule)
+        Intent::OpenPath { path, schedule, recording_name } => {
+            handle_open_path(&path, &schedule, recording_name)
         }
         Intent::ListTasks => AiResponse {
             message: "好的，我来帮你查看当前所有任务。".into(),
@@ -141,6 +142,9 @@ fn classify_intent(input: &str, installed_apps: &[AppInfo]) -> Intent {
         return Intent::DeleteTask { name };
     }
 
+    // 提取可能的录制动作名称
+    let recording_name = extract_recording_name(input);
+
     // 解析调度信息
     let schedule = parse_schedule(input);
 
@@ -149,18 +153,18 @@ fn classify_intent(input: &str, installed_apps: &[AppInfo]) -> Intent {
     for ext in &script_exts {
         if lower.contains(ext) {
             let path = extract_path(input);
-            return Intent::RunScript { path, schedule };
+            return Intent::RunScript { path, schedule, recording_name };
         }
     }
     if lower.contains("运行脚本") || lower.contains("执行脚本") || lower.contains("run script") {
         let path = extract_path(input);
-        return Intent::RunScript { path, schedule };
+        return Intent::RunScript { path, schedule, recording_name };
     }
 
     // 打开路径/文件夹
     if lower.contains("打开文件夹") || lower.contains("打开目录") || lower.contains("open folder") {
         let path = extract_path(input);
-        return Intent::OpenPath { path, schedule };
+        return Intent::OpenPath { path, schedule, recording_name };
     }
 
     // 打开应用（关键词匹配）
@@ -169,7 +173,7 @@ fn classify_intent(input: &str, installed_apps: &[AppInfo]) -> Intent {
         if lower.contains(kw) {
             let app_name = extract_app_name(input, kw, installed_apps);
             if !app_name.is_empty() {
-                return Intent::OpenApp { app_name, schedule };
+                return Intent::OpenApp { app_name, schedule, recording_name };
             }
         }
     }
@@ -180,11 +184,33 @@ fn classify_intent(input: &str, installed_apps: &[AppInfo]) -> Intent {
             return Intent::OpenApp {
                 app_name: app.name.clone(),
                 schedule,
+                recording_name,
             };
         }
     }
 
     Intent::Unknown { input: input.to_string() }
+}
+
+/// 提取录制名称
+fn extract_recording_name(input: &str) -> Option<String> {
+    let keywords = ["并且录制", "并录制", "附带录制", "执行录制", "录制动作", "带着录制", "录制", "增加录制", "添加录制"];
+    for kw in keywords {
+        if let Some(pos) = input.find(kw) {
+            let end = pos + kw.len();
+            if end <= input.len() && input.is_char_boundary(end) {
+                let mut after = input[end..].trim().to_string();
+                after = after.replace("。", "").replace("！", "").replace("，", "").trim().to_string();
+                if !after.is_empty() {
+                    after = after.replace("动作", "").replace("的录制", "").trim().to_string();
+                    if !after.is_empty() {
+                        return Some(after);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// 从输入中提取应用名称
@@ -487,7 +513,7 @@ fn remove_schedule_words(input: &str) -> String {
 }
 
 /// 处理打开应用
-fn handle_open_app(app_name: &str, schedule: &Schedule, installed_apps: &[AppInfo]) -> AiResponse {
+fn handle_open_app(app_name: &str, schedule: &Schedule, recording_name: Option<String>, installed_apps: &[AppInfo]) -> AiResponse {
     // 查找应用路径
     let app_lower = app_name.to_lowercase();
     let mut found_path = String::new();
@@ -525,6 +551,7 @@ fn handle_open_app(app_name: &str, schedule: &Schedule, installed_apps: &[AppInf
         schedule_days: schedule.days.clone(),
         enabled: true,
         confidence: if found_path.is_empty() { 0.6 } else { 0.95 },
+        recording_name: recording_name.clone(),
     };
 
     let msg = if found_path.is_empty() {
@@ -541,7 +568,7 @@ fn handle_open_app(app_name: &str, schedule: &Schedule, installed_apps: &[AppInf
 }
 
 /// 处理运行脚本
-fn handle_run_script(path: &str, schedule: &Schedule) -> AiResponse {
+fn handle_run_script(path: &str, schedule: &Schedule, recording_name: Option<String>) -> AiResponse {
     if path.is_empty() {
         return AiResponse {
             message: "请提供脚本路径，例如「运行 ~/Desktop/backup.sh」".into(),
@@ -567,6 +594,7 @@ fn handle_run_script(path: &str, schedule: &Schedule) -> AiResponse {
         schedule_days: schedule.days.clone(),
         enabled: true,
         confidence: 0.85,
+        recording_name: recording_name.clone(),
     };
 
     AiResponse {
@@ -577,7 +605,7 @@ fn handle_run_script(path: &str, schedule: &Schedule) -> AiResponse {
 }
 
 /// 处理打开路径
-fn handle_open_path(path: &str, schedule: &Schedule) -> AiResponse {
+fn handle_open_path(path: &str, schedule: &Schedule, recording_name: Option<String>) -> AiResponse {
     if path.is_empty() {
         return AiResponse {
             message: "请提供文件夹路径，例如「打开文件夹 ~/Desktop」".into(),
@@ -595,6 +623,7 @@ fn handle_open_path(path: &str, schedule: &Schedule) -> AiResponse {
         schedule_days: schedule.days.clone(),
         enabled: true,
         confidence: 0.9,
+        recording_name: recording_name.clone(),
     };
 
     AiResponse {

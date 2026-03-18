@@ -82,7 +82,7 @@ const MarketplacePage: React.FC<MarketplacePageProps> = ({ lang: _lang = 'zh' })
   const [myTasks, setMyTasks] = useState<any[]>([]);
 
   const userId = localStorage.getItem('user_id') || '';
-  const token = localStorage.getItem('auth_token') || '';
+  const token = localStorage.getItem('token') || '';
 
   // 双模式: cloud=仅云端, local=仅本地, auto=云端优先+本地兜底
   const [mktMode, setMktMode] = useState<'cloud' | 'local' | 'auto'>('auto');

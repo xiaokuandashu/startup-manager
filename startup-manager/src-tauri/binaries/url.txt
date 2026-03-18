@@ -1,0 +1,1 @@
+https://github.com/ggml-org/llama.cpp/releases/download/b8392/llama-b8392-bin-macos-arm64.tar.gz

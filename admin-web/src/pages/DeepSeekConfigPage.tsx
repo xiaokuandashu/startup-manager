@@ -88,19 +88,71 @@ export default function DeepSeekConfigPage({ token }: DeepSeekConfigPageProps) {
 
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>API Key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder={apiKeyMasked ? `当前: ${apiKeyMasked}（留空则不更改）` : '请输入 sk-... 开头的密钥'}
-            style={inputStyle}
-          />
-          {apiKeyMasked && (
-            <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>
-              ✅ 已配置密钥: {apiKeyMasked}
+          {apiKeyMasked && !apiKey && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: '#22c55e' }}>✅ 已配置密钥: {apiKeyMasked}</span>
+              <button
+                onClick={() => setApiKey(' ')}
+                style={{
+                  padding: '2px 10px', fontSize: 12, borderRadius: 4,
+                  border: '1px solid #3b82f6', color: '#3b82f6', background: '#eff6ff',
+                  cursor: 'pointer',
+                }}
+              >编辑</button>
+              <button
+                onClick={async () => {
+                  if (!confirm('确定要删除 API Key 吗？删除后用户将无法使用 DeepSeek 云端 AI')) return;
+                  setSaving(true);
+                  try {
+                    const res = await fetch('/api/admin/config/deepseek', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ deepseek_api_key: '' }),
+                    });
+                    if (res.ok) {
+                      setMsg('API Key 已删除');
+                      setMsgType('success');
+                      setApiKeyMasked('');
+                      loadConfig();
+                    } else {
+                      setMsg('删除失败');
+                      setMsgType('error');
+                    }
+                  } catch {
+                    setMsg('删除失败，请检查网络');
+                    setMsgType('error');
+                  }
+                  setSaving(false);
+                }}
+                style={{
+                  padding: '2px 10px', fontSize: 12, borderRadius: 4,
+                  border: '1px solid #ef4444', color: '#ef4444', background: '#fef2f2',
+                  cursor: 'pointer',
+                }}
+              >删除</button>
             </div>
           )}
-          {!apiKeyMasked && (
+          {(!apiKeyMasked || apiKey) && (
+            <input
+              type="password"
+              value={apiKey === ' ' ? '' : apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder={apiKeyMasked ? `当前: ${apiKeyMasked}（输入新密钥覆盖）` : '请输入 sk-... 开头的密钥'}
+              style={inputStyle}
+              autoFocus={apiKey === ' '}
+            />
+          )}
+          {(!apiKeyMasked || apiKey) && apiKey !== ' ' && (
+            <>
+              {apiKeyMasked && (
+                <button
+                  onClick={() => setApiKey('')}
+                  style={{ fontSize: 12, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}
+                >取消编辑</button>
+              )}
+            </>
+          )}
+          {!apiKeyMasked && !apiKey && (
             <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 4 }}>
               ⚠️ 未配置密钥，用户将无法使用 DeepSeek 云端 AI
             </div>

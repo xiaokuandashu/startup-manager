@@ -1208,7 +1208,8 @@ body {
 .model-card-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .model-card-actions { display: flex; align-items: center; gap: 8px; }
 .model-btn-download { padding: 5px 14px; background: #0091FF; color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
-.model-btn-download:disabled { opacity: 0.5; cursor: not-allowed; }
+.model-btn-download:disabled { opacity: 0.5; cursor: not-allowed; background: #b0b0b0; }
+.model-btn-disabled { background: #b0b0b0 !important; opacity: 0.5; cursor: not-allowed; }
 .model-btn-delete { padding: 5px 14px; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .model-btn-delete:hover { background: #fef2f2; }
 

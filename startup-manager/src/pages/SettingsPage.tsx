@@ -476,11 +476,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                     </>
                   ) : (
                     <button
-                      className="model-btn-download"
+                      className={`model-btn-download${modelDownloading && modelDownloading !== m.id ? ' model-btn-disabled' : ''}`}
                       onClick={() => handleDownloadModel(m.id)}
                       disabled={modelDownloading !== null}
                     >
-                      {modelDownloading === m.id ? '下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
+                      {modelDownloading === m.id ? '⏳ 下载中...' : <><Download size={14} style={{marginRight:3}} /> 下载</>}
                     </button>
                   )}
                 </div>

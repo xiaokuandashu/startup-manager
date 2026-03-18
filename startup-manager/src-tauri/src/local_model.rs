@@ -231,11 +231,39 @@ pub async fn get_model_list() -> Result<Vec<LocalModel>, String> {
 
 /// 获取内置 llama-server 二进制路径
 /// macOS: 使用 Tauri externalBin 打包的内置二进制
-/// Windows: 运行时自动下载到 models 目录（exe + DLL 同目录，避免 Tauri 目录分离问题）
+/// Windows: 优先使用 Tauri 打包的内置引擎，自动从 resources 复制 DLL 到 exe 旁
 fn resolve_sidecar_path() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        // Windows: 引擎放在 models 同级的 engine 目录下，确保 exe 和 DLL 在一起
+        // 方式1: Tauri externalBin 打包的 llama-server.exe
+        if let Ok(app_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = app_exe.parent() {
+                let sidecar = exe_dir.join("llama-server.exe");
+                if sidecar.exists() {
+                    // 从 resources/binaries/ 复制 DLL 到 exe 同目录
+                    let dll_names = ["ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "llama.dll"];
+                    let resource_dirs = [
+                        exe_dir.join("resources").join("binaries"),
+                        exe_dir.join("resources"),
+                    ];
+                    for dll in &dll_names {
+                        let target = exe_dir.join(dll);
+                        if !target.exists() {
+                            for res_dir in &resource_dirs {
+                                let src = res_dir.join(dll);
+                                if src.exists() {
+                                    let _ = std::fs::copy(&src, &target);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return Ok(sidecar.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        // 方式2: 运行时下载的引擎（engine/ 目录）
         let engine_dir = format!("{}/../engine", models_dir());
         let engine_dir = std::path::Path::new(&engine_dir).canonicalize()
             .unwrap_or_else(|_| std::path::PathBuf::from(&format!("{}/../engine", models_dir())));
@@ -244,21 +272,7 @@ fn resolve_sidecar_path() -> Result<String, String> {
             return Ok(exe_path.to_string_lossy().to_string());
         }
 
-        // 兜底: 检查 Tauri externalBin 的位置
-        if let Ok(app_exe) = std::env::current_exe() {
-            if let Some(exe_dir) = app_exe.parent() {
-                let sidecar = exe_dir.join("llama-server.exe");
-                if sidecar.exists() {
-                    // 检查 DLL 是否也在同目录
-                    let dll_check = exe_dir.join("ggml.dll");
-                    if dll_check.exists() {
-                        return Ok(sidecar.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-
-        // 开发模式
+        // 方式3: 开发模式
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let dev_path = format!("{}\\binaries\\llama-server-x86_64-pc-windows-msvc.exe", manifest_dir);
         if std::path::Path::new(&dev_path).exists() {

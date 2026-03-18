@@ -134,6 +134,178 @@ pub fn load_models_dir_config() {
     }
 }
 
+/// 模型源信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MirrorSource {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub is_custom: bool,
+}
+
+/// 内置模型源列表
+fn builtin_mirrors() -> Vec<MirrorSource> {
+    vec![
+        MirrorSource {
+            id: "hf-mirror".into(),
+            name: "HF Mirror (国内推荐)".into(),
+            base_url: "https://hf-mirror.com".into(),
+            is_custom: false,
+        },
+        MirrorSource {
+            id: "modelscope".into(),
+            name: "ModelScope (魔搭社区)".into(),
+            base_url: "https://modelscope.cn/models".into(),
+            is_custom: false,
+        },
+        MirrorSource {
+            id: "huggingface".into(),
+            name: "HuggingFace (官方，需科学上网)".into(),
+            base_url: "https://huggingface.co".into(),
+            is_custom: false,
+        },
+    ]
+}
+
+/// 模型的 HuggingFace 路径（不含 base_url 前缀）
+struct ModelPath {
+    repo: &'static str,
+    filename: &'static str,
+}
+
+/// 模型路径映射
+fn model_paths() -> Vec<(&'static str, ModelPath)> {
+    vec![
+        ("qwen2.5-1.5b", ModelPath {
+            repo: "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+            filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        }),
+        ("phi3-mini", ModelPath {
+            repo: "microsoft/Phi-3-mini-4k-instruct-gguf",
+            filename: "Phi-3-mini-4k-instruct-q4.gguf",
+        }),
+        ("gemma2-2b", ModelPath {
+            repo: "bartowski/gemma-2-2b-it-GGUF",
+            filename: "gemma-2-2b-it-Q4_K_M.gguf",
+        }),
+    ]
+}
+
+/// 获取当前选中的模型源
+fn current_mirror_id() -> String {
+    let config_path = mirror_config_path();
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        let id = content.trim().to_string();
+        if !id.is_empty() {
+            return id;
+        }
+    }
+    "hf-mirror".to_string() // 默认使用 hf-mirror
+}
+
+/// 设置模型源
+pub fn set_mirror_source(mirror_id: &str) -> Result<(), String> {
+    let config_path = mirror_config_path();
+    // 确保目录存在
+    if let Some(parent) = std::path::Path::new(&config_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&config_path, mirror_id).map_err(|e| format!("保存模型源失败: {}", e))?;
+    Ok(())
+}
+
+/// 获取所有可用模型源（内置 + 自定义）
+pub fn get_mirror_sources() -> Vec<MirrorSource> {
+    let mut mirrors = builtin_mirrors();
+    // 加载自定义源
+    let custom_path = custom_mirror_config_path();
+    if let Ok(content) = std::fs::read_to_string(&custom_path) {
+        if let Ok(custom) = serde_json::from_str::<MirrorSource>(&content) {
+            mirrors.push(custom);
+        }
+    }
+    mirrors
+}
+
+/// 设置自定义模型源
+pub fn set_custom_mirror(name: &str, url: &str) -> Result<(), String> {
+    let custom = MirrorSource {
+        id: "custom".into(),
+        name: name.to_string(),
+        base_url: url.trim_end_matches('/').to_string(),
+        is_custom: true,
+    };
+    let config_path = custom_mirror_config_path();
+    if let Some(parent) = std::path::Path::new(&config_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::to_string(&custom).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, json).map_err(|e| format!("保存自定义源失败: {}", e))?;
+    Ok(())
+}
+
+/// 模型源配置文件路径
+fn mirror_config_path() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/Library/Application Support/com.a.startup-manager/mirror_source.conf", home)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
+        format!("{}\\startup-manager\\mirror_source.conf", appdata)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/.config/startup-manager/mirror_source.conf", home)
+    }
+}
+
+/// 自定义源配置文件路径
+fn custom_mirror_config_path() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/Library/Application Support/com.a.startup-manager/custom_mirror.json", home)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
+        format!("{}\\startup-manager\\custom_mirror.json", appdata)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        format!("{}/.config/startup-manager/custom_mirror.json", home)
+    }
+}
+
+/// 根据当前模型源构造下载 URL
+fn build_download_url(model_id: &str) -> String {
+    let mirror_id = current_mirror_id();
+    let mirrors = get_mirror_sources();
+    let mirror = mirrors.iter().find(|m| m.id == mirror_id)
+        .unwrap_or_else(|| mirrors.first().unwrap());
+
+    let paths = model_paths();
+    let path = paths.iter().find(|(id, _)| *id == model_id);
+
+    match path {
+        Some((_, mp)) => {
+            if mirror.id == "modelscope" {
+                // ModelScope 用不同的 URL 格式
+                format!("{}/{}/resolve/master/{}", mirror.base_url, mp.repo, mp.filename)
+            } else {
+                // HuggingFace 格式（hf-mirror / huggingface / 自定义）
+                format!("{}/{}/resolve/main/{}", mirror.base_url, mp.repo, mp.filename)
+            }
+        }
+        None => String::new(),
+    }
+}
+
 /// 可下载的模型列表
 fn available_models() -> Vec<LocalModel> {
     let mdir = models_dir();
@@ -165,7 +337,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "通义千问，中文最佳，推荐首选".into(),
             installed: std::path::Path::new(&format!("{}/qwen2.5-1.5b-instruct-q4_k_m.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
+            download_url: build_download_url("qwen2.5-1.5b"),
             filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
         },
         LocalModel {
@@ -175,7 +347,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "微软小模型，推理能力强".into(),
             installed: std::path::Path::new(&format!("{}/phi-3-mini-4k-instruct-q4.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://hf-mirror.com/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf".into(),
+            download_url: build_download_url("phi3-mini"),
             filename: "phi-3-mini-4k-instruct-q4.gguf".into(),
         },
         LocalModel {
@@ -185,7 +357,7 @@ fn available_models() -> Vec<LocalModel> {
             description: "Google 轻量级模型".into(),
             installed: std::path::Path::new(&format!("{}/gemma-2-2b-it-Q4_K_M.gguf", mdir)).exists(),
             downloading: false,
-            download_url: "https://hf-mirror.com/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf".into(),
+            download_url: build_download_url("gemma2-2b"),
             filename: "gemma-2-2b-it-Q4_K_M.gguf".into(),
         },
     ]

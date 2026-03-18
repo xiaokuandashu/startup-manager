@@ -215,7 +215,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     } catch (e) {
       setMessages(prev => [...prev, {
         id: Date.now(), role: 'ai',
-        content: `❌ 模型下载失败：${e}`,
+        content: `❌ 模型下载失败：${e}\n\n💡 建议：前往 **设置 → 本地模型管理** 切换模型下载源后重试`,
         responseType: 'error', timestamp: Date.now(),
       }]);
     } finally {

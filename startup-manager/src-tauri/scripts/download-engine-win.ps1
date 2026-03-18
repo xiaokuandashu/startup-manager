@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$binDir = Join-Path $PSScriptRoot ".." "binaries"
+$binDir = Join-Path (Join-Path $PSScriptRoot "..") "binaries"
 $engineExe = Join-Path $binDir "llama-server-x86_64-pc-windows-msvc.exe"
 
 if (Test-Path $engineExe) {

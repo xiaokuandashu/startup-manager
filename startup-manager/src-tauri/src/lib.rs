@@ -831,6 +831,43 @@ fn model_delete(model_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_mirror_sources() -> Vec<local_model::MirrorSource> {
+    local_model::get_mirror_sources()
+}
+
+#[tauri::command]
+fn get_current_mirror() -> String {
+    let config_path = {
+        #[cfg(target_os = "macos")]
+        {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            format!("{}/Library/Application Support/com.a.startup-manager/mirror_source.conf", home)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
+            format!("{}\\startup-manager\\mirror_source.conf", appdata)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            format!("{}/.config/startup-manager/mirror_source.conf", home)
+        }
+    };
+    std::fs::read_to_string(&config_path).unwrap_or_else(|_| "hf-mirror".into()).trim().to_string()
+}
+
+#[tauri::command]
+fn set_mirror(mirror_id: String) -> Result<(), String> {
+    local_model::set_mirror_source(&mirror_id)
+}
+
+#[tauri::command]
+fn set_custom_mirror_cmd(name: String, url: String) -> Result<(), String> {
+    local_model::set_custom_mirror(&name, &url)
+}
+
+#[tauri::command]
 async fn engine_start(model_id: String) -> Result<(), String> {
     local_model::start_engine(&model_id).await
 }
@@ -1011,6 +1048,10 @@ pub fn run() {
             model_list,
             model_pull,
             model_delete,
+            get_mirror_sources,
+            get_current_mirror,
+            set_mirror,
+            set_custom_mirror_cmd,
             engine_start,
             engine_stop,
             download_engine,

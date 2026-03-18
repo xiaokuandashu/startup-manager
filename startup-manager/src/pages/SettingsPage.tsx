@@ -47,6 +47,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
   const [engineRunning, setEngineRunning] = useState(false);
   const [modelDownloading, setModelDownloading] = useState<string|null>(null);
   const [modelsDir, setModelsDir] = useState<string>('');
+  // mirror source management
+  const [mirrorSources, setMirrorSources] = useState<{id:string;name:string;base_url:string;is_custom:boolean}[]>([]);
+  const [currentMirror, setCurrentMirror] = useState('hf-mirror');
+  const [showCustomMirror, setShowCustomMirror] = useState(false);
+  const [customMirrorName, setCustomMirrorName] = useState('');
+  const [customMirrorUrl, setCustomMirrorUrl] = useState('');
   // credits & deepseek key
   const [creditsBalance, setCreditsBalance] = useState(0);
   const [hasDeepseekKey, setHasDeepseekKey] = useState(false);
@@ -121,6 +127,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
           setModels(status.models || []);
           setEngineRunning(status.engine_running || false);
           setModelsDir(status.models_dir || '');
+        } catch { /* ignore */ }
+      }
+      // 加载模型源配置
+      if (isTauriEnv()) {
+        try {
+          const { invoke: inv } = await import('@tauri-apps/api/core');
+          const sources: any = await inv('get_mirror_sources');
+          setMirrorSources(sources || []);
+          const curMirror: string = await inv('get_current_mirror');
+          setCurrentMirror(curMirror || 'hf-mirror');
         } catch { /* ignore */ }
       }
       // 加载用户积分和 DeepSeek Key 状态
@@ -461,6 +477,71 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
               }}><FolderOpen size={12} /> 更换</button>
             </div>
           </div>
+          {/* 模型源切换 */}
+          <div className="setting-item" style={{flexWrap:'wrap', gap: 8}}>
+            <span>模型下载源</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <select
+                value={currentMirror}
+                onChange={async (e) => {
+                  const newMirror = e.target.value;
+                  if (newMirror === '__custom__') {
+                    setShowCustomMirror(true);
+                    return;
+                  }
+                  setCurrentMirror(newMirror);
+                  if (isTauriEnv()) {
+                    try {
+                      const { invoke: inv } = await import('@tauri-apps/api/core');
+                      await inv('set_mirror', { mirrorId: newMirror });
+                      await refreshModels();
+                      showStatus('模型源已切换 ✅');
+                    } catch (e: any) { showStatus('切换失败: ' + e); }
+                  }
+                }}
+                style={{ padding: '5px 10px', borderRadius: 6, border: '1.5px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer', minWidth: 180 }}
+              >
+                {mirrorSources.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+                <option value="__custom__">+ 自定义源...</option>
+              </select>
+              {currentMirror !== 'hf-mirror' && currentMirror !== 'huggingface' && currentMirror !== 'modelscope' && (
+                <button className="action-link" style={{fontSize:11}} onClick={() => setShowCustomMirror(true)}>编辑</button>
+              )}
+            </div>
+          </div>
+          {showCustomMirror && (
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 8, padding: 14, marginBottom: 8 }}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>自定义模型源</div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <input placeholder="源名称（如：我的镜像站）" value={customMirrorName} onChange={e => setCustomMirrorName(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12 }} />
+                <input placeholder="基础地址（如：https://hf-mirror.com）" value={customMirrorUrl} onChange={e => setCustomMirrorUrl(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12 }} />
+                <div style={{fontSize:11,color:'var(--text-secondary)'}}>地址格式同 HuggingFace，需支持 /org/repo/resolve/main/file 路径</div>
+                <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                  <button onClick={() => setShowCustomMirror(false)} style={{padding:'5px 14px',border:'1px solid var(--border-color)',borderRadius:6,background:'none',cursor:'pointer',fontSize:12,color:'var(--text-primary)'}}>取消</button>
+                  <button className="btn-check-update" style={{fontSize:12,padding:'5px 14px',marginTop:0}} onClick={async () => {
+                    if (!customMirrorName.trim() || !customMirrorUrl.trim()) { showStatus('请填写源名称和地址'); return; }
+                    if (isTauriEnv()) {
+                      try {
+                        const { invoke: inv } = await import('@tauri-apps/api/core');
+                        await inv('set_custom_mirror_cmd', { name: customMirrorName.trim(), url: customMirrorUrl.trim() });
+                        await inv('set_mirror', { mirrorId: 'custom' });
+                        setCurrentMirror('custom');
+                        const sources: any = await inv('get_mirror_sources');
+                        setMirrorSources(sources || []);
+                        await refreshModels();
+                        setShowCustomMirror(false);
+                        showStatus('自定义源已保存 ✅');
+                      } catch (e: any) { showStatus('保存失败: ' + e); }
+                    }
+                  }}>保存并切换</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="model-list">
             {models.filter(m => m.id !== 'rule_engine' && m.id !== 'deepseek_cloud').map(m => (
               <div key={m.id} className="model-card">

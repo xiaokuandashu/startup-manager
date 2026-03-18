@@ -658,7 +658,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     <span className="ai-model-badge">切换</span>
                   )
                 ) : downloadingModel.has(model.id) ? (
-                  <span className="ai-model-badge download"><Loader2 size={12} style={{marginRight:3,animation:'spin 1s linear infinite'}} /> 下载中... {downloadProgress[model.id] || 0}%</span>
+                  <span className="ai-model-badge download" style={{display:'inline-flex',alignItems:'center'}}><Loader2 size={12} style={{marginRight:3,animation:'spin 1s linear infinite'}} /> 下载中... {downloadProgress[model.id] || 0}%</span>
                 ) : (
                   <span className="ai-model-badge download">
                     <Download size={12} style={{marginRight:3}} /> {model.size} · 下载

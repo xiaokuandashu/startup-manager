@@ -660,6 +660,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, themeMode, onThemeM
                   ) : (
                     <button
                       className="model-btn-download"
+                      style={{display:'inline-flex',alignItems:'center'}}
                       onClick={() => handleDownloadModel(m.id)}
                       disabled={modelDownloading.has(m.id)}
                     >

@@ -134,7 +134,7 @@ app.get('/api/deepseek/usage', authMiddleware, (req: any, res) => {
   res.json({
     call_count: callCount,
     daily_limit: dailyLimit,
-    remaining: hasCustomKey ? -1 : Math.max(0, dailyLimit - callCount), // -1 = 无限
+    remaining: Math.max(0, dailyLimit - callCount),
     has_custom_key: hasCustomKey,
   });
 });

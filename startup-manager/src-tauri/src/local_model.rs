@@ -230,51 +230,173 @@ pub async fn get_model_list() -> Result<Vec<LocalModel>, String> {
 }
 
 /// 获取内置 llama-server 二进制路径
-/// Tauri externalBin 会将 binaries/llama-server-{target-triple} 打包到：
-/// macOS: App.app/Contents/MacOS/binaries/llama-server
-/// Windows: 安装目录/binaries/llama-server.exe
+/// macOS: 使用 Tauri externalBin 打包的内置二进制
+/// Windows: 运行时自动下载到 models 目录（exe + DLL 同目录，避免 Tauri 目录分离问题）
 fn resolve_sidecar_path() -> Result<String, String> {
-    // 方式1: 尝试从当前 exe 目录解析
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            #[cfg(target_os = "windows")]
-            let sidecar = exe_dir.join("llama-server.exe");
-            #[cfg(not(target_os = "windows"))]
-            let sidecar = exe_dir.join("llama-server");
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: 引擎放在 models 同级的 engine 目录下，确保 exe 和 DLL 在一起
+        let engine_dir = format!("{}/../engine", models_dir());
+        let engine_dir = std::path::Path::new(&engine_dir).canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(&format!("{}/../engine", models_dir())));
+        let exe_path = engine_dir.join("llama-server.exe");
+        if exe_path.exists() {
+            return Ok(exe_path.to_string_lossy().to_string());
+        }
 
-            if sidecar.exists() {
-                return Ok(sidecar.to_string_lossy().to_string());
+        // 兜底: 检查 Tauri externalBin 的位置
+        if let Ok(app_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = app_exe.parent() {
+                let sidecar = exe_dir.join("llama-server.exe");
+                if sidecar.exists() {
+                    // 检查 DLL 是否也在同目录
+                    let dll_check = exe_dir.join("ggml.dll");
+                    if dll_check.exists() {
+                        return Ok(sidecar.to_string_lossy().to_string());
+                    }
+                }
             }
+        }
 
-            // macOS: 也检查同级 binaries/ 目录 (开发模式)
-            #[cfg(target_os = "macos")]
-            {
+        // 开发模式
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let dev_path = format!("{}\\binaries\\llama-server-x86_64-pc-windows-msvc.exe", manifest_dir);
+        if std::path::Path::new(&dev_path).exists() {
+            return Ok(dev_path);
+        }
+
+        return Err("ENGINE_NOT_INSTALLED".into());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: 使用 Tauri 打包的内置二进制（dylib 通过 frameworks 配置）
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let sidecar = exe_dir.join("llama-server");
+                if sidecar.exists() {
+                    return Ok(sidecar.to_string_lossy().to_string());
+                }
                 let sidecar_in_binaries = exe_dir.join("binaries/llama-server-aarch64-apple-darwin");
                 if sidecar_in_binaries.exists() {
                     return Ok(sidecar_in_binaries.to_string_lossy().to_string());
                 }
             }
         }
-    }
-
-    // 方式2: 尝试 cargo 开发模式路径
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    #[cfg(target_os = "macos")]
-    {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let dev_path = format!("{}/binaries/llama-server-aarch64-apple-darwin", manifest_dir);
         if std::path::Path::new(&dev_path).exists() {
             return Ok(dev_path);
         }
+        Err("无法找到内置推理引擎二进制文件".into())
     }
-    #[cfg(target_os = "windows")]
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let dev_path = format!("{}\\binaries\\llama-server-x86_64-pc-windows-msvc.exe", manifest_dir);
-        if std::path::Path::new(&dev_path).exists() {
-            return Ok(dev_path);
+        Err("当前平台不支持本地推理引擎".into())
+    }
+}
+
+/// Windows: 下载 llama-server 引擎包（exe + DLL 一起打包）
+#[cfg(target_os = "windows")]
+pub async fn download_engine(app: &tauri::AppHandle) -> Result<String, String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+    use tauri::Emitter;
+
+    let engine_dir = format!("{}/../engine", models_dir());
+    std::fs::create_dir_all(&engine_dir).map_err(|e| format!("创建引擎目录失败: {}", e))?;
+
+    let engine_exe = format!("{}/llama-server.exe", engine_dir);
+    if std::path::Path::new(&engine_exe).exists() {
+        return Ok("引擎已安装".into());
+    }
+
+    // 下载 llama.cpp 官方 Windows CPU 版（兼容 Intel/AMD）
+    let download_url = "https://ghfast.top/https://github.com/ggml-org/llama.cpp/releases/download/b8400/llama-b8400-bin-win-cpu-x64.zip";
+    let zip_path = format!("{}/llama-engine.zip", engine_dir);
+
+    let _ = app.emit("engine_download_progress", serde_json::json!({
+        "status": "downloading",
+        "progress": 0
+    }));
+
+    let client = reqwest::Client::new();
+    let res = client.get(download_url)
+        .send().await
+        .map_err(|e| format!("引擎下载请求失败: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("引擎下载失败: HTTP {}", res.status()));
+    }
+
+    let total_size = res.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    let mut file = std::fs::File::create(&zip_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    let mut last_percent = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取流失败: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+        if total_size > 0 {
+            let percent = ((downloaded as f64 / total_size as f64) * 100.0) as u32;
+            if percent > last_percent {
+                last_percent = percent;
+                let _ = app.emit("engine_download_progress", serde_json::json!({
+                    "status": "downloading",
+                    "progress": percent
+                }));
+            }
+        }
+    }
+    drop(file);
+
+    // 解压 zip（只提取需要的文件，按文件名匹配，兼容嵌套子目录）
+    let _ = app.emit("engine_download_progress", serde_json::json!({
+        "status": "extracting",
+        "progress": 100
+    }));
+
+    let zip_file = std::fs::File::open(&zip_path).map_err(|e| format!("打开zip失败: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| format!("解析zip失败: {}", e))?;
+
+    let needed_files: Vec<&str> = vec![
+        "llama-server.exe",
+        "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "llama.dll",
+    ];
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("读取zip条目失败: {}", e))?;
+        let full_name = entry.name().to_string();
+        // 提取文件名部分（忽略目录前缀，如 "build/bin/llama-server.exe" -> "llama-server.exe"）
+        let file_name = full_name.rsplit('/').next().unwrap_or(&full_name);
+        let file_name_back = full_name.rsplit('\\').next().unwrap_or(file_name);
+        let base_name = if file_name.len() < file_name_back.len() { file_name } else { file_name_back };
+
+        if needed_files.iter().any(|f| *f == base_name) {
+            let outpath = format!("{}/{}", engine_dir, base_name);
+            let mut outfile = std::fs::File::create(&outpath).map_err(|e| format!("创建文件失败: {}", e))?;
+            std::io::copy(&mut entry, &mut outfile).map_err(|e| format!("解压失败: {}", e))?;
         }
     }
 
-    Err("无法找到内置推理引擎二进制文件".into())
+    // 清理 zip 文件
+    let _ = std::fs::remove_file(&zip_path);
+
+    let _ = app.emit("engine_download_progress", serde_json::json!({
+        "status": "done",
+        "progress": 100
+    }));
+
+    Ok("引擎安装完成".into())
+}
+
+/// 非 Windows 平台的占位函数
+#[cfg(not(target_os = "windows"))]
+pub async fn download_engine(_app: &tauri::AppHandle) -> Result<String, String> {
+    Ok("引擎已内置".into())
 }
 
 /// 下载 GGUF 模型
@@ -354,38 +476,6 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 在 Windows 上确保 DLL 文件与 llama-server.exe 在同一个目录
-#[cfg(target_os = "windows")]
-fn ensure_dlls_beside_exe(exe_path: &str) {
-    let exe_dir = std::path::Path::new(exe_path).parent().unwrap_or(std::path::Path::new("."));
-    
-    // 检查同级 resources/binaries 目录（Tauri NSIS 安装后的资源目录）
-    let possible_resource_dirs = vec![
-        exe_dir.join("resources").join("binaries"),
-        exe_dir.join("resources"),
-        exe_dir.join("..").join("resources").join("binaries"),
-        exe_dir.join("..").join("resources"),
-    ];
-    
-    let dll_names = ["ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "ggml.dll", "llama.dll"];
-    
-    for dll_name in &dll_names {
-        let target = exe_dir.join(dll_name);
-        if target.exists() {
-            continue; // 已经存在，跳过
-        }
-        
-        // 从资源目录复制
-        for res_dir in &possible_resource_dirs {
-            let src = res_dir.join(dll_name);
-            if src.exists() {
-                let _ = std::fs::copy(&src, &target);
-                break;
-            }
-        }
-    }
-}
-
 /// 启动内置 llama-server 加载指定模型
 pub async fn start_engine(model_id: &str) -> Result<(), String> {
     stop_engine();
@@ -402,12 +492,15 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     let log_file_path = format!("{}/llama-server.log", models_dir());
     let log_file = std::fs::File::create(&log_file_path).unwrap_or_else(|_| std::fs::File::create("/tmp/llama-server.log").unwrap());
 
-    // 使用内置的 llama-server 二进制
-    let bin = resolve_sidecar_path()?;
-
-    // Windows: 确保 DLL 文件与 exe 在同一目录
-    #[cfg(target_os = "windows")]
-    ensure_dlls_beside_exe(&bin);
+    // 获取引擎路径（Windows 从 engine/ 目录，macOS 从内置 sidecar）
+    let bin = resolve_sidecar_path()
+        .map_err(|e| {
+            if e == "ENGINE_NOT_INSTALLED" {
+                "引擎未安装，请先在设置中点击「下载引擎」".to_string()
+            } else {
+                e
+            }
+        })?;
 
     let mut cmd = Command::new(&bin);
     cmd.args([
@@ -421,12 +514,12 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     .stdout(log_file.try_clone().unwrap())
     .stderr(log_file);
 
-    // Windows: 把 exe 所在目录加入 PATH，确保能找到 DLL
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
+        // 将引擎所在目录加入 PATH，确保同目录 DLL 被优先找到
         if let Some(exe_dir) = std::path::Path::new(&bin).parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
             let new_path = format!("{};{}", exe_dir.to_string_lossy(), current_path);

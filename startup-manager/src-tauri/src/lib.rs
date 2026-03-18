@@ -841,6 +841,11 @@ fn engine_stop() {
 }
 
 #[tauri::command]
+async fn download_engine(app: tauri::AppHandle) -> Result<String, String> {
+    local_model::download_engine(&app).await
+}
+
+#[tauri::command]
 async fn local_model_infer(input: String) -> Result<String, String> {
     local_model::local_infer(&input).await
 }
@@ -1008,6 +1013,7 @@ pub fn run() {
             model_delete,
             engine_start,
             engine_stop,
+            download_engine,
             local_model_infer,
             ax_get_window,
             ax_check_permission,

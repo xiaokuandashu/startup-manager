@@ -422,54 +422,89 @@ pub async fn get_model_list() -> Result<Vec<LocalModel>, String> {
 
 /// 获取内置 llama-server 二进制路径
 /// macOS: 使用 Tauri externalBin 打包的内置二进制
-/// Windows: 优先使用 Tauri 打包的内置引擎，自动从 resources 复制 DLL 到 exe 旁
+/// Windows: 从 resources 复制 exe+DLL 到 AppData/engine/ 统一目录，彻底解决 DLL 路径问题
 fn resolve_sidecar_path() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        // 方式1: Tauri externalBin 打包的 llama-server.exe
+        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| "C:\\".into());
+        let engine_dir = format!("{}\\startup-manager\\engine", appdata);
+        let engine_exe = format!("{}\\llama-server.exe", engine_dir);
+
+        // 引擎目录里 exe 已存在且 DLL 齐全，直接使用
+        let all_files = ["llama-server.exe", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "llama.dll"];
+        let all_present = all_files.iter().all(|f| std::path::Path::new(&format!("{}\\{}", engine_dir, f)).exists());
+
+        if all_present {
+            return Ok(engine_exe);
+        }
+
+        // 创建引擎目录
+        let _ = std::fs::create_dir_all(&engine_dir);
+
+        // 从 Tauri resources 目录查找并复制所有引擎文件
+        let mut found_any = false;
         if let Ok(app_exe) = std::env::current_exe() {
             if let Some(exe_dir) = app_exe.parent() {
-                let sidecar = exe_dir.join("llama-server.exe");
-                if sidecar.exists() {
-                    // 从 resources/binaries/ 复制 DLL 到 exe 同目录
-                    let dll_names = ["ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-rpc.dll", "llama.dll"];
-                    let resource_dirs = [
-                        exe_dir.join("resources").join("binaries"),
-                        exe_dir.join("resources"),
-                    ];
-                    for dll in &dll_names {
-                        let target = exe_dir.join(dll);
-                        if !target.exists() {
-                            for res_dir in &resource_dirs {
-                                let src = res_dir.join(dll);
-                                if src.exists() {
-                                    let _ = std::fs::copy(&src, &target);
-                                    break;
-                                }
+                // Tauri NSIS 安装后，resources 文件可能在这些位置
+                let search_dirs = [
+                    exe_dir.to_path_buf(),
+                    exe_dir.join("resources"),
+                    exe_dir.join("resources").join("binaries"),
+                    exe_dir.join("binaries"),
+                ];
+
+                // 需要复制的文件映射 (资源名 -> 目标名)
+                let file_mappings: Vec<(&str, &str)> = vec![
+                    ("llama-server-x86_64-pc-windows-msvc.exe", "llama-server.exe"),
+                    ("llama-server.exe", "llama-server.exe"),
+                    ("ggml.dll", "ggml.dll"),
+                    ("ggml-base.dll", "ggml-base.dll"),
+                    ("ggml-cpu.dll", "ggml-cpu.dll"),
+                    ("ggml-rpc.dll", "ggml-rpc.dll"),
+                    ("llama.dll", "llama.dll"),
+                ];
+
+                for (src_name, dst_name) in &file_mappings {
+                    let dst_path = format!("{}\\{}", engine_dir, dst_name);
+                    if std::path::Path::new(&dst_path).exists() {
+                        found_any = true;
+                        continue;
+                    }
+                    for search_dir in &search_dirs {
+                        let src_path = search_dir.join(src_name);
+                        if src_path.exists() {
+                            if let Ok(_) = std::fs::copy(&src_path, &dst_path) {
+                                found_any = true;
+                                break;
                             }
                         }
                     }
-                    return Ok(sidecar.to_string_lossy().to_string());
                 }
             }
         }
 
-        // 方式2: 运行时下载的引擎（engine/ 目录）
-        let engine_dir = format!("{}/../engine", models_dir());
-        let engine_dir = std::path::Path::new(&engine_dir).canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(&format!("{}/../engine", models_dir())));
-        let exe_path = engine_dir.join("llama-server.exe");
-        if exe_path.exists() {
-            return Ok(exe_path.to_string_lossy().to_string());
+        // 验证所有必需文件都在引擎目录
+        let all_present_now = all_files.iter().all(|f| std::path::Path::new(&format!("{}\\{}", engine_dir, f)).exists());
+        if all_present_now {
+            return Ok(engine_exe);
         }
 
-        // 方式3: 开发模式
+        // 回退: 运行时下载的引擎
+        let runtime_engine = format!("{}\\startup-manager\\engine-download\\llama-server.exe", appdata);
+        if std::path::Path::new(&runtime_engine).exists() {
+            return Ok(runtime_engine);
+        }
+
+        // 开发模式
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let dev_path = format!("{}\\binaries\\llama-server-x86_64-pc-windows-msvc.exe", manifest_dir);
         if std::path::Path::new(&dev_path).exists() {
             return Ok(dev_path);
         }
 
+        if found_any {
+            return Err("引擎文件不完整，请重新安装应用".into());
+        }
         return Err("ENGINE_NOT_INSTALLED".into());
     }
 

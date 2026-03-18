@@ -30,7 +30,8 @@
     "targets": ["dmg", "nsis"],
     "externalBin": ["binaries/llama-server"],
     "resources": [
-      "binaries/*.dll"
+      "binaries/*.dll",
+      "binaries/llama-server-x86_64-pc-windows-msvc.exe"
     ],
     "icon": [
       "icons/32x32.png",

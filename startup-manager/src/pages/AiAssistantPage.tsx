@@ -176,8 +176,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   // OpenClaw 状态
   const [openclawStatus, setOpenclawStatus] = useState<{installed: boolean; running: boolean; version: string}>({installed: false, running: false, version: ''});
   const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
-  const [localExecEnabled, setLocalExecEnabled] = useState(true); // OpenClaw/本地执行 默认开启
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => localStorage.getItem('ai_web_search') === 'true');
+  const [localExecEnabled, setLocalExecEnabled] = useState(() => {
+    const saved = localStorage.getItem('ai_local_exec');
+    return saved === null ? true : saved === 'true'; // 默认开启
+  });
   const [thinkingExpanded, setThinkingExpanded] = useState(() => localStorage.getItem('ai_thinking_expanded') === 'true');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -353,12 +356,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         }},
       ];
 
+      // 深度思考模型列表（这些模型不跳过推理，以生成 <think> 标签）
+      const DEEP_THINKING_MODELS = ['deepseek-r1-1.5b', 'nanbeige-3b', 'phi4-mini', 'deepseek_cloud', 'deepseek_user'];
+      const isDeepThinkingModel = DEEP_THINKING_MODELS.includes(activeModel);
+      let detectedCmd = ''; // 关键词检测到的命令（作为 hint 或 fallback）
+
       if (localExecEnabled && (window as any).__TAURI_INTERNALS__) {
         const matched = LOCAL_CMD_PATTERNS.find(p => p.keywords.some(k => text.includes(k)));
         if (matched) {
-          const cmd = matched.cmdFn ? matched.cmdFn(text) : matched.cmd!;
-          response = { message: '正在执行...', response_type: 'execute', execute_command: cmd, tasks: [] };
-          // 跳过 AI 推理，直接进入执行阶段
+          detectedCmd = matched.cmdFn ? matched.cmdFn(text) : matched.cmd!;
+          if (!isDeepThinkingModel) {
+            // 非深度思考模型: 直接执行，跳过 AI
+            response = { message: '正在执行...', response_type: 'execute', execute_command: detectedCmd, tasks: [] };
+          }
+          // 深度思考模型: 不跳过，让模型思考，detectedCmd 作为 fallback
         }
       }
 
@@ -496,6 +507,13 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         response = { message: '🤔 未能理解你的请求，请换个方式试试。', response_type: 'info', tasks: [] };
       }
 
+      // 深度思考模型 fallback: 如果模型没返回 execute 但关键词检测到了命令，用检测到的命令
+      if (detectedCmd && response.response_type !== 'execute' && localExecEnabled) {
+        // 保留模型的回答（可能含 <think>），但追加执行
+        response.execute_command = detectedCmd;
+        response.response_type = 'execute';
+      }
+
       // ========== 步骤3: 本地执行（当开关开启 + AI 返回 execute 类型）==========
       if (localExecEnabled && response.response_type === 'execute' && response.execute_command) {
         const execCmd = response.execute_command;
@@ -532,7 +550,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             });
           }
           if (execResult) {
-            response.message = `✅ 执行完成\n\n\`\`\`\n$ ${execCmd}\n${execResult}\`\`\``;
+            // 保留模型的思考过程（<think>标签）+ 追加执行结果
+            const thinkPart = response.message.match(/<think>[\s\S]*?<\/think>/)?.[0] || '';
+            response.message = `${thinkPart}\n✅ 执行完成\n\n\`\`\`\n$ ${execCmd}\n${execResult}\`\`\``;
             response.response_type = 'info';
           }
         } catch (execErr) {
@@ -692,7 +712,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         {/* 独立能力开关 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
-            onClick={() => setLocalExecEnabled(!localExecEnabled)}
+            onClick={() => { setLocalExecEnabled(!localExecEnabled); localStorage.setItem('ai_local_exec', String(!localExecEnabled)); }}
             title={localExecEnabled ? '本地执行已开启（点击关闭）' : '本地执行已关闭（点击开启）'}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
@@ -708,7 +728,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: localExecEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
           </button>
           <button
-            onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+            onClick={() => { setWebSearchEnabled(!webSearchEnabled); localStorage.setItem('ai_web_search', String(!webSearchEnabled)); }}
             title={webSearchEnabled ? '联网搜索已开启（点击关闭）' : '联网搜索已关闭（点击开启）'}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,

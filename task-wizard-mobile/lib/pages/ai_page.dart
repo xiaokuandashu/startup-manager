@@ -156,7 +156,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     setState(() => _isLoading = true);
 
     final ws = ref.read(wsServiceProvider);
-    final isWsConnected = ref.read(wsConnectedProvider);
+    final isWsConnected = ws.isConnected;
     final model = ref.read(aiModelProvider);
     final currentModel = _models.firstWhere((m) => m.id == model, orElse: () => _models[0]);
 
@@ -164,7 +164,11 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     if (!currentModel.isCloud && _isPcOnline() && isWsConnected) {
       // 电脑本地模型 + 电脑在线 → WS 中转
-      ws.sendAiChat(_selectedDevice()?.id ?? '', text, model);
+      ws.sendAiChat(
+        deviceId: _selectedDevice()?.id ?? '',
+        message: text,
+        model: model,
+      );
       try {
         final response = await ws.messages
             .where((m) => m.type == 'ai_response')
@@ -261,10 +265,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         onSave: (key) {
           // 通过 WS 发送密钥更新
           final ws = ref.read(wsServiceProvider);
-          ws.send(WsMessage(type: 'update_key', data: {
-            'key': key,
-            'device_id': device.id,
-          }));
+          ws.sendUpdateKey(key);
           Navigator.pop(ctx);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

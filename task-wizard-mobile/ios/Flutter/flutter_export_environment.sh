@@ -1,6 +1,6 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=/Users/a/development/flutter"
+export "FLUTTER_ROOT=/Users/a/Desktop/Ai_test/.flutter-sdk/flutter"
 export "FLUTTER_APPLICATION_PATH=/Users/a/Desktop/Ai_test/task-wizard-mobile"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_TARGET=lib/main.dart"

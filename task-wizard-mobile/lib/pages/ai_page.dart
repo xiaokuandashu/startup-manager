@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/app_localizations.dart';
 import '../models/message.dart';
+import '../models/device.dart';
 import '../providers/auth_provider.dart';
 import '../providers/device_provider.dart';
 import '../services/api_service.dart';
@@ -11,9 +12,85 @@ import '../theme/app_theme.dart';
 
 /// AI 消息列表 Provider
 final chatMessagesProvider = StateProvider<List<ChatMessage>>((ref) => []);
-final aiModelProvider = StateProvider<String>((ref) => 'cloud');
 
-/// 🤖 AI 助手页 — 沉浸式设计
+/// 当前选择的 AI 模型 ID
+final aiModelProvider = StateProvider<String>((ref) => 'deepseek_cloud_official');
+
+/// 三个能力开关
+final deepThinkProvider = StateProvider<bool>((ref) => false);
+final smartSearchProvider = StateProvider<bool>((ref) => false);
+final localExecProvider = StateProvider<bool>((ref) => false);
+
+/// 模型定义
+class AiModel {
+  final String id;
+  final String name;
+  final String desc;
+  final bool isCloud;
+  final String tag; // 官方 / 自己 / 电脑本地
+  final Color color;
+  final IconData icon;
+
+  const AiModel({
+    required this.id,
+    required this.name,
+    required this.desc,
+    required this.isCloud,
+    required this.tag,
+    required this.color,
+    required this.icon,
+  });
+}
+
+const _models = [
+  AiModel(
+    id: 'deepseek_cloud_official',
+    name: 'DeepSeek 云端',
+    desc: '理解复杂指令，需要网络\n每天100次',
+    isCloud: true,
+    tag: '官方',
+    color: Color(0xFF3b82f6),
+    icon: Icons.cloud_rounded,
+  ),
+  AiModel(
+    id: 'deepseek_cloud_own',
+    name: 'DeepSeek 云端',
+    desc: '理解复杂指令，需要网络\n自有密钥·无限制',
+    isCloud: true,
+    tag: '自己',
+    color: Color(0xFFf59e0b),
+    icon: Icons.vpn_key_rounded,
+  ),
+  AiModel(
+    id: 'deepseek_r1_local',
+    name: 'DeepSeek-R1 1.5B',
+    desc: '深度思考(CoT)，R1-70B蒸馏版',
+    isCloud: false,
+    tag: '电脑本地',
+    color: Color(0xFF8b5cf6),
+    icon: Icons.memory_rounded,
+  ),
+  AiModel(
+    id: 'nanbeige_local',
+    name: 'Nanbeige 4.1 3B',
+    desc: '多语言思考，38亿思考模型',
+    isCloud: false,
+    tag: '电脑本地',
+    color: Color(0xFF06b6d4),
+    icon: Icons.psychology_rounded,
+  ),
+  AiModel(
+    id: 'phi4_local',
+    name: 'Phi-4 Mini',
+    desc: '微软最新，推理增强型',
+    isCloud: false,
+    tag: '电脑本地',
+    color: Color(0xFF10b981),
+    icon: Icons.auto_awesome_rounded,
+  ),
+];
+
+/// 🤖 AI 助手页 — 支持电脑联动 + 离线置灰
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
 
@@ -31,6 +108,23 @@ class _AiPageState extends ConsumerState<AiPage> {
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 获取当前选中设备
+  Device? _selectedDevice() {
+    final deviceId = ref.read(selectedDeviceProvider);
+    final devices = ref.read(deviceListProvider);
+    if (deviceId == null || devices.isEmpty) return null;
+    try {
+      return devices.firstWhere((d) => d.id == deviceId);
+    } catch (_) {
+      return devices.isNotEmpty ? devices.first : null;
+    }
+  }
+
+  bool _isPcOnline() {
+    final device = _selectedDevice();
+    return device?.online ?? false;
   }
 
   void _scrollToBottom() {
@@ -64,25 +158,24 @@ class _AiPageState extends ConsumerState<AiPage> {
     final ws = ref.read(wsServiceProvider);
     final isWsConnected = ref.read(wsConnectedProvider);
     final model = ref.read(aiModelProvider);
+    final currentModel = _models.firstWhere((m) => m.id == model, orElse: () => _models[0]);
 
     String aiContent = '';
 
-    if (isWsConnected) {
-      // ===== WS 已连接：中转到电脑 =====
-      ws.sendAiChat('connected_pc', text, model);
-
-      // 等待 WS 响应（带超时）
+    if (!currentModel.isCloud && _isPcOnline() && isWsConnected) {
+      // 电脑本地模型 + 电脑在线 → WS 中转
+      ws.sendAiChat(_selectedDevice()?.id ?? '', text, model);
       try {
         final response = await ws.messages
             .where((m) => m.type == 'ai_response')
             .first
-            .timeout(const Duration(seconds: 15));
+            .timeout(const Duration(seconds: 30));
         aiContent = response.data['content'] as String? ?? '电脑未返回结果';
       } catch (_) {
         aiContent = '⏱ 等待电脑回复超时，请检查电脑是否在线';
       }
-    } else {
-      // ===== WS 未连接：调用云端 API =====
+    } else if (currentModel.isCloud) {
+      // 云端模型 → 直接调用 API
       try {
         final token = ref.read(authProvider).token ?? '';
         final resp = await ApiService.cloudAiChat(token, text, model);
@@ -92,7 +185,6 @@ class _AiPageState extends ConsumerState<AiPage> {
           final choices = resp['choices'] as List?;
           if (choices != null && choices.isNotEmpty) {
             final content = choices[0]['message']?['content'] ?? '';
-            // 尝试解析 JSON 中的 message 字段
             try {
               final cleanJson = content.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```\n?'), '').trim();
               final parsed = _tryParseJson(cleanJson);
@@ -111,45 +203,92 @@ class _AiPageState extends ConsumerState<AiPage> {
       } catch (e) {
         aiContent = '❌ 网络错误: $e';
       }
+    } else {
+      aiContent = '❌ 电脑不在线，无法使用电脑本地模型\n请切换到 DeepSeek 云端模型';
     }
 
     messages.state = [
       ...messages.state,
-      ChatMessage(
-        id: 'ai_${now.millisecondsSinceEpoch}',
-        role: 'ai',
-        content: aiContent,
-      ),
+      ChatMessage(id: 'ai_${now.millisecondsSinceEpoch}', role: 'ai', content: aiContent),
     ];
     _scrollToBottom();
-
     setState(() => _isLoading = false);
   }
 
   Map<String, dynamic>? _tryParseJson(String text) {
     try {
-      return Map<String, dynamic>.from(
-        const JsonDecoder().convert(text) as Map,
-      );
+      return Map<String, dynamic>.from(const JsonDecoder().convert(text) as Map);
     } catch (_) {
       return null;
     }
+  }
+
+  /// 显示模型选择面板
+  void _showModelPanel() {
+    final pcOnline = _isPcOnline();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _ModelPanel(
+        pcOnline: pcOnline,
+        currentModel: ref.read(aiModelProvider),
+        onSelect: (id) {
+          ref.read(aiModelProvider.notifier).state = id;
+          Navigator.pop(ctx);
+        },
+      ),
+    );
+  }
+
+  /// 显示设备选择器
+  void _showDeviceSelector() {
+    final devices = ref.read(deviceListProvider);
+    final selected = ref.read(selectedDeviceProvider);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _DeviceSelector(
+        devices: devices,
+        selectedId: selected,
+        onSelect: (id) {
+          ref.read(selectedDeviceProvider.notifier).state = id;
+          Navigator.pop(ctx);
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final messages = ref.watch(chatMessagesProvider);
-    final model = ref.watch(aiModelProvider);
+    final modelId = ref.watch(aiModelProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final devices = ref.watch(deviceListProvider);
+    final selectedId = ref.watch(selectedDeviceProvider);
+    final deepThink = ref.watch(deepThinkProvider);
+    final smartSearch = ref.watch(smartSearchProvider);
+    final localExec = ref.watch(localExecProvider);
+
+    // 自动选择第一台设备
+    if (selectedId == null && devices.isNotEmpty) {
+      Future.microtask(() {
+        ref.read(selectedDeviceProvider.notifier).state = devices.first.id;
+      });
+    }
+
+    final pcOnline = _isPcOnline();
+    final currentModel = _models.firstWhere((m) => m.id == modelId, orElse: () => _models[0]);
+    final selectedDevice = _selectedDevice();
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // ===== 沉浸式顶栏 =====
+            // ===== 顶栏: AI 助手 + 设备选择 =====
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: Row(
                 children: [
                   Text(
@@ -162,32 +301,156 @@ class _AiPageState extends ConsumerState<AiPage> {
                     ),
                   ),
                   const Spacer(),
-                  // Model selector pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: AppTheme.cardShadowSmall,
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: model,
-                        isDense: true,
-                        icon: Icon(Icons.expand_more_rounded, size: 18, color: AppTheme.primaryBlue),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.primaryBlue,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        items: [
-                          DropdownMenuItem(value: 'cloud', child: Text('☁️ ${l.cloudModel}')),
-                          DropdownMenuItem(value: 'local', child: Text('📱 ${l.localModel}')),
-                          DropdownMenuItem(value: 'openclaw', child: const Text('🐾 OpenClaw')),
+                  // 设备选择 pill
+                  GestureDetector(
+                    onTap: _showDeviceSelector,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: AppTheme.cardShadowSmall,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            pcOnline ? Icons.computer_rounded : Icons.computer_rounded,
+                            size: 16,
+                            color: pcOnline ? AppTheme.successGreen : AppTheme.textHint,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            selectedDevice?.name ?? '选择电脑',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white70 : AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // 在线指示灯
+                          Container(
+                            width: 6, height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: pcOnline ? AppTheme.successGreen : const Color(0xFFD1D5DB),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.expand_more_rounded, size: 16,
+                            color: isDark ? Colors.white38 : AppTheme.textHint),
                         ],
-                        onChanged: (v) => ref.read(aiModelProvider.notifier).state = v ?? 'cloud',
                       ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ===== 模型选择 + 在线状态 =====
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              child: Row(
+                children: [
+                  // 模型选择按钮
+                  GestureDetector(
+                    onTap: _showModelPanel,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: currentModel.color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(currentModel.icon, size: 15, color: currentModel.color),
+                          const SizedBox(width: 5),
+                          Text(
+                            currentModel.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: currentModel.color,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: currentModel.color.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              currentModel.tag,
+                              style: TextStyle(fontSize: 9, color: currentModel.color, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.expand_more_rounded, size: 14, color: currentModel.color),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  // 在线状态
+                  if (!pcOnline)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningOrange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_off_rounded, size: 12, color: AppTheme.warningOrange),
+                          const SizedBox(width: 3),
+                          Text(
+                            '电脑离线',
+                            style: TextStyle(fontSize: 10, color: AppTheme.warningOrange, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // ===== 三个开关 =====
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Row(
+                children: [
+                  _ToggleChip(
+                    icon: Icons.auto_awesome_rounded,
+                    label: '深度思考',
+                    isOn: deepThink,
+                    enabled: pcOnline,
+                    onTap: pcOnline
+                        ? () => ref.read(deepThinkProvider.notifier).state = !deepThink
+                        : null,
+                  ),
+                  const SizedBox(width: 8),
+                  _ToggleChip(
+                    icon: Icons.travel_explore_rounded,
+                    label: '智能搜索',
+                    isOn: smartSearch,
+                    enabled: pcOnline,
+                    onTap: pcOnline
+                        ? () => ref.read(smartSearchProvider.notifier).state = !smartSearch
+                        : null,
+                  ),
+                  const SizedBox(width: 8),
+                  _ToggleChip(
+                    icon: Icons.terminal_rounded,
+                    label: '本地执行',
+                    isOn: localExec,
+                    enabled: pcOnline,
+                    onTap: pcOnline
+                        ? () => ref.read(localExecProvider.notifier).state = !localExec
+                        : null,
                   ),
                 ],
               ),
@@ -196,13 +459,13 @@ class _AiPageState extends ConsumerState<AiPage> {
             // ===== 消息区域 =====
             Expanded(
               child: messages.isEmpty
-                ? _buildEmptyState(l, isDark)
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) => ChatBubble(message: messages[index]),
-                  ),
+                  ? _buildEmptyState(l, isDark, pcOnline)
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) => ChatBubble(message: messages[index]),
+                    ),
             ),
 
             // ===== 浮动输入栏 =====
@@ -222,11 +485,8 @@ class _AiPageState extends ConsumerState<AiPage> {
               ),
               child: Row(
                 children: [
-                  // Voice button
-                  _buildInputButton(Icons.mic_rounded, isDark, () {/* TODO */}),
-                  // Image button
-                  _buildInputButton(Icons.image_rounded, isDark, () {/* TODO */}),
-                  // Text input
+                  _buildInputButton(Icons.mic_rounded, isDark, () {}),
+                  _buildInputButton(Icons.image_rounded, isDark, () {}),
                   Expanded(
                     child: TextField(
                       controller: _inputController,
@@ -272,11 +532,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                         borderRadius: BorderRadius.circular(21),
                         child: Center(
                           child: _isLoading
-                            ? const SizedBox(
-                                width: 16, height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.arrow_upward_rounded, size: 20, color: Colors.white),
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.arrow_upward_rounded, size: 20, color: Colors.white),
                         ),
                       ),
                     ),
@@ -299,22 +559,17 @@ class _AiPageState extends ConsumerState<AiPage> {
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 22,
-            color: isDark ? Colors.white38 : AppTheme.textHint,
-          ),
+          child: Icon(icon, size: 22, color: isDark ? Colors.white38 : AppTheme.textHint),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState(AppLocalizations l, bool isDark) {
+  Widget _buildEmptyState(AppLocalizations l, bool isDark, bool pcOnline) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Gradient circle with AI icon
           Container(
             width: 100, height: 100,
             decoration: BoxDecoration(
@@ -363,6 +618,486 @@ class _AiPageState extends ConsumerState<AiPage> {
               color: isDark ? Colors.white24 : AppTheme.textHint.withOpacity(0.6),
             ),
           ),
+          if (!pcOnline) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.warningOrange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 14, color: AppTheme.warningOrange),
+                  const SizedBox(width: 6),
+                  Text(
+                    '电脑离线，仅支持云端模型',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.warningOrange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ========================================
+// 开关 Chip 组件
+// ========================================
+class _ToggleChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isOn;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _ToggleChip({
+    required this.icon,
+    required this.label,
+    required this.isOn,
+    required this.enabled,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = AppTheme.successGreen;
+    final disabledColor = isDark ? const Color(0xFF3A3D4E) : const Color(0xFFE5E7EB);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: !enabled
+              ? disabledColor.withOpacity(0.5)
+              : isOn
+                  ? activeColor.withOpacity(0.12)
+                  : (isDark ? const Color(0xFF1A1D2E) : Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: !enabled
+                ? Colors.transparent
+                : isOn
+                    ? activeColor.withOpacity(0.3)
+                    : (isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE5E7EB)),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: !enabled
+                  ? (isDark ? Colors.white24 : AppTheme.textHint.withOpacity(0.4))
+                  : isOn
+                      ? activeColor
+                      : (isDark ? Colors.white54 : AppTheme.textSecondary),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: !enabled
+                    ? (isDark ? Colors.white24 : AppTheme.textHint.withOpacity(0.4))
+                    : isOn
+                        ? activeColor
+                        : (isDark ? Colors.white54 : AppTheme.textSecondary),
+              ),
+            ),
+            if (isOn && enabled) ...[
+              const SizedBox(width: 3),
+              Container(
+                width: 5, height: 5,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: activeColor),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ========================================
+// 模型选择底部面板
+// ========================================
+class _ModelPanel extends StatelessWidget {
+  final bool pcOnline;
+  final String currentModel;
+  final ValueChanged<String> onSelect;
+
+  const _ModelPanel({
+    required this.pcOnline,
+    required this.currentModel,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              children: [
+                Text(
+                  '选择 AI 模型',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : AppTheme.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                if (!pcOnline)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warningOrange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_off_rounded, size: 12, color: AppTheme.warningOrange),
+                        const SizedBox(width: 3),
+                        Text('电脑离线', style: TextStyle(fontSize: 10, color: AppTheme.warningOrange, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Model list
+          ...List.generate(_models.length, (i) {
+            final m = _models[i];
+            final isSelected = m.id == currentModel;
+            final isDisabled = !m.isCloud && !pcOnline;
+            return _ModelTile(
+              model: m,
+              isSelected: isSelected,
+              isDisabled: isDisabled,
+              isDark: isDark,
+              onTap: isDisabled ? null : () => onSelect(m.id),
+            );
+          }),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModelTile extends StatelessWidget {
+  final AiModel model;
+  final bool isSelected;
+  final bool isDisabled;
+  final bool isDark;
+  final VoidCallback? onTap;
+
+  const _ModelTile({
+    required this.model,
+    required this.isSelected,
+    required this.isDisabled,
+    required this.isDark,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDisabled
+              ? (isDark ? const Color(0xFF151721) : const Color(0xFFF5F5F5))
+              : isSelected
+                  ? model.color.withOpacity(isDark ? 0.15 : 0.06)
+                  : (isDark ? const Color(0xFF242738) : const Color(0xFFF9FAFB)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected && !isDisabled
+                ? model.color.withOpacity(0.4)
+                : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: isDisabled
+                    ? (isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE5E7EB))
+                    : model.color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                model.icon,
+                size: 20,
+                color: isDisabled
+                    ? (isDark ? Colors.white24 : const Color(0xFFB0B6C3))
+                    : model.color,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Name + desc
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          model.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isDisabled
+                                ? (isDark ? Colors.white24 : const Color(0xFFB0B6C3))
+                                : (isDark ? Colors.white : AppTheme.textPrimary),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: isDisabled
+                              ? (isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE5E7EB))
+                              : model.color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          model.tag,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isDisabled
+                                ? (isDark ? Colors.white24 : const Color(0xFFB0B6C3))
+                                : model.color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    model.desc.split('\n').first,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDisabled
+                          ? (isDark ? Colors.white12 : const Color(0xFFD1D5DB))
+                          : (isDark ? Colors.white38 : AppTheme.textHint),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Status
+            if (isSelected && !isDisabled)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: model.color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '使用中',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: model.color),
+                ),
+              )
+            else if (!isDisabled)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2A2D3E) : const Color(0xFFF0F1F5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '切换',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white38 : AppTheme.textSecondary),
+                ),
+              )
+            else
+              Icon(Icons.lock_outline_rounded, size: 16,
+                color: isDark ? Colors.white12 : const Color(0xFFD1D5DB)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ========================================
+// 设备选择器底部面板
+// ========================================
+class _DeviceSelector extends StatelessWidget {
+  final List<Device> devices;
+  final String? selectedId;
+  final ValueChanged<String> onSelect;
+
+  const _DeviceSelector({
+    required this.devices,
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              children: [
+                Text(
+                  '我的电脑',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${devices.length}台',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textHint),
+                ),
+              ],
+            ),
+          ),
+          if (devices.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                children: [
+                  Icon(Icons.computer_rounded, size: 40, color: AppTheme.textHint.withOpacity(0.3)),
+                  const SizedBox(height: 12),
+                  Text('暂无设备', style: TextStyle(color: AppTheme.textHint)),
+                  const SizedBox(height: 4),
+                  Text('请在电脑端登录同一账号', style: TextStyle(fontSize: 12, color: AppTheme.textHint.withOpacity(0.6))),
+                ],
+              ),
+            )
+          else
+            ...devices.map((d) {
+              final isSelected = d.id == selectedId;
+              return GestureDetector(
+                onTap: () => onSelect(d.id),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppTheme.primaryBlue.withOpacity(isDark ? 0.15 : 0.06)
+                        : (isDark ? const Color(0xFF242738) : const Color(0xFFF9FAFB)),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primaryBlue.withOpacity(0.3) : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Platform icon
+                      Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          color: d.online
+                              ? AppTheme.successGreen.withOpacity(0.1)
+                              : (isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE5E7EB)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(d.platformIcon, style: const TextStyle(fontSize: 20)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              d.name.isEmpty ? d.hostname : d.name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              d.online ? '🟢 在线' : '⚪ 离线',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: d.online ? AppTheme.successGreen : AppTheme.textHint,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        Icon(Icons.check_circle_rounded, size: 20, color: AppTheme.primaryBlue),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
         ],
       ),
     );

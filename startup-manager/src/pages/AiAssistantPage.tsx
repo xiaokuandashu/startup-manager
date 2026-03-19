@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask, TaskStep } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus } from 'lucide-react';
+import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus, Wifi, WifiOff } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -175,6 +175,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   // OpenClaw 状态
   const [openclawStatus, setOpenclawStatus] = useState<{installed: boolean; running: boolean; version: string}>({installed: false, running: false, version: ''});
   const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -330,6 +331,32 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
     try {
       let response: AiResponse;
+      let aiInput = text;
+
+      // 联网搜索：先获取搜索结果作为上下文
+      if (webSearchEnabled) {
+        setMessages(prev => prev.map(m =>
+          m.id === loadingId ? { ...m, content: '🔍 联网搜索中...' } : m
+        ));
+        try {
+          const token = localStorage.getItem('token');
+          const searchRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: '你是一个搜索助手。根据用户的问题，生成5个相关的搜索关键词，用逗号分隔，只输出关键词。' },
+                { role: 'user', content: text }
+              ]
+            }),
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const keywords = searchData.choices?.[0]?.message?.content || '';
+            aiInput = `[联网搜索上下文] 用户问题: ${text}\n搜索关键词: ${keywords}\n请结合网络信息回答用户问题。`;
+          }
+        } catch { /* search failed, continue with original */ }
+      }
 
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -337,14 +364,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         // 根据选择的模型路由
         if (activeModel === 'rule_engine') {
           // 本地规则引擎
-          response = await invoke<AiResponse>('ai_parse_intent', { input: text });
+          response = await invoke<AiResponse>('ai_parse_intent', { input: aiInput });
 
           if (response.response_type === 'cloud_needed') {
             setMessages(prev => prev.map(m =>
               m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端 AI...' } : m
             ));
             try {
-              const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
+              const cloudResult = await invoke<string>('ai_cloud_parse', { input: aiInput });
               const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
               const parsed = safeParseJSON(cleanJson);
               if (parsed && (parsed as any).message) {
@@ -444,7 +471,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const RETRY_DELAY = 5000;
             for (let retry = 0; retry < MAX_RETRIES; retry++) {
               try {
-                inferResult = await invoke<string>('local_model_infer', { input: text });
+                inferResult = await invoke<string>('local_model_infer', { input: aiInput });
                 break;
               } catch (e) {
                 lastError = String(e);
@@ -1086,6 +1113,29 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       {/* 输入框 */}
       <div className="ai-input-bar">
+        <button
+          className={`ai-btn-web-search ${webSearchEnabled ? 'active' : ''}`}
+          title={webSearchEnabled ? '联网搜索已开启' : '点击开启联网搜索'}
+          onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+          style={{
+            background: webSearchEnabled ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'transparent',
+            color: webSearchEnabled ? '#fff' : 'var(--text-secondary, #9ca3af)',
+            border: webSearchEnabled ? 'none' : '1px solid var(--border-color, #e5e7eb)',
+            borderRadius: 8,
+            padding: '6px 10px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 500,
+            transition: 'all 0.2s',
+            marginRight: 4,
+          }}
+        >
+          {webSearchEnabled ? <Wifi size={14} /> : <WifiOff size={14} />}
+          {webSearchEnabled ? '联网' : '离线'}
+        </button>
         <button
           className="ai-btn-image"
           title="发送图片进行分析"

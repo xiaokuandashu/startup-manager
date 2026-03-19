@@ -634,11 +634,17 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe, C:\Program Files\Google\Chr
 - 查看CPU信息：execute_command 为 "sysctl -n machdep.cpu.brand_string"(macOS) 或 "wmic cpu get name"(Windows)
 - 查看内存：execute_command 为 "sysctl hw.memsize"(macOS) 或 "wmic memorychip get capacity"(Windows)
 - 查看硬盘：execute_command 为 "df -h"(macOS) 或 "wmic diskdrive get size,model"(Windows)
-- 创建文件夹：execute_command 为 "mkdir -p 路径"(macOS) 或 "mkdir 路径"(Windows)
+- 创建文件夹：execute_command 为 "mkdir -p ~/Desktop/名称"(macOS) 或 "mkdir %USERPROFILE%\\Desktop\\名称"(Windows)
 - 打开文件/应用：execute_command 为 "open 路径"(macOS) 或 "start 路径"(Windows)
+- 查看桌面文件：execute_command 为 "ls -la ~/Desktop"(macOS) 或 "dir %USERPROFILE%\\Desktop"(Windows)
 - 查看进程：execute_command 为 "ps aux | head -20"(macOS) 或 "tasklist"(Windows)
 - 查看网络：execute_command 为 "ifconfig"(macOS) 或 "ipconfig"(Windows)
 - 所有终端命令
+
+⚠️ 路径规则（非常重要）：
+- macOS 路径必须用 ~ 开头，如 ~/Desktop，不要用 /Users/username/
+- Windows 路径用 %USERPROFILE% 开头，不要硬编码用户名
+- 中文"桌面"对应 ~/Desktop（macOS），%USERPROFILE%\Desktop（Windows）
 
 ## 判断规则（非常重要）
 - 用户问问题/闲聊 → response_type:"info"

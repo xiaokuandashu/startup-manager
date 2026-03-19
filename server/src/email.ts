@@ -27,12 +27,12 @@ export async function sendVerificationCode(email: string): Promise<string> {
   codeStore.set(email, { code, expires });
 
   await transporter.sendMail({
-    from: '"自启精灵" <260244206@qq.com>',
+    from: '"任务精灵" <260244206@qq.com>',
     to: email,
-    subject: '自启精灵 - 邮箱验证码',
+    subject: '任务精灵 - 邮箱验证码',
     html: `
       <div style="max-width:480px;margin:0 auto;padding:32px;font-family:sans-serif;">
-        <h2 style="color:#4F46E5;margin-bottom:24px;">自启精灵</h2>
+        <h2 style="color:#4F46E5;margin-bottom:24px;">任务精灵</h2>
         <p>您好，您的验证码为：</p>
         <div style="font-size:32px;font-weight:bold;color:#4F46E5;letter-spacing:8px;margin:24px 0;padding:16px;background:#F3F4F6;border-radius:8px;text-align:center;">
           ${code}

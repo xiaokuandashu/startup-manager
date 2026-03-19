@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="task_wizard_mobile"
+        android:label="任务精灵"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

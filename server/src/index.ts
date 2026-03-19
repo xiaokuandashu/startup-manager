@@ -281,7 +281,7 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n========================================`);
-  console.log(`  自启精灵后端服务已启动`);
+  console.log(`  任务精灵后端服务已启动`);
   console.log(`  地址: http://0.0.0.0:${PORT}`);
   console.log(`  管理后台: http://0.0.0.0:${PORT}/admin`);
   console.log(`  API: http://0.0.0.0:${PORT}/api`);

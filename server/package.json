@@ -1,7 +1,7 @@
 {
   "name": "startup-manager-server",
   "version": "1.0.0",
-  "description": "自启精灵后端服务",
+  "description": "任务精灵后端服务",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

@@ -18,20 +18,16 @@ class HomePage extends ConsumerWidget {
     final devices = ref.watch(deviceListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final allDevices = devices.isEmpty
-      ? [
-          Device(id: 'demo1', name: 'MacBook Pro', platform: 'macos', online: true, commMode: CommMode.wifi, cpu: 23, memory: 45, memoryUsed: 14.2, memoryTotal: 31.2, disk: 67, diskUsed: 335, diskTotal: 500, tasksRunning: 2),
-          Device(id: 'demo2', name: '公司台式机', platform: 'windows', online: false, commMode: CommMode.offline, cpu: 0, memory: 0),
-          Device(id: 'demo3', name: '家里 Windows', platform: 'windows', online: true, commMode: CommMode.cloud, cpu: 15, memory: 62, memoryUsed: 10.3, memoryTotal: 16.0, disk: 45, diskUsed: 230, diskTotal: 512, tasksRunning: 1),
-        ]
-      : devices;
+    final allDevices = devices;
 
     // 首页最多显示5台设备
     final homeDevices = allDevices.length > 5 ? allDevices.sublist(0, 5) : allDevices;
     final onlineCount = allDevices.where((d) => d.online).length;
 
-    // 取第一个在线设备的状态数据
-    final activeDevice = allDevices.firstWhere((d) => d.online, orElse: () => allDevices.first);
+    // 取第一个在线设备的状态数据（无设备时用默认值）
+    final activeDevice = allDevices.isNotEmpty
+      ? allDevices.firstWhere((d) => d.online, orElse: () => allDevices.first)
+      : null;
 
     return Scaffold(
       body: SafeArea(
@@ -137,11 +133,11 @@ class HomePage extends ConsumerWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(child: StatCard(label: l.running, value: '${activeDevice.tasksRunning}', color: AppTheme.successGreen, icon: Icons.play_circle_outline)),
+                  Expanded(child: StatCard(label: l.running, value: '${activeDevice?.tasksRunning ?? 0}', color: AppTheme.successGreen, icon: Icons.play_circle_outline)),
                   const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: l.completed, value: '5', color: AppTheme.primaryBlue, icon: Icons.check_circle_outline)),
+                  Expanded(child: StatCard(label: l.completed, value: '0', color: AppTheme.primaryBlue, icon: Icons.check_circle_outline)),
                   const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: l.pending, value: '3', color: AppTheme.warningOrange, icon: Icons.schedule_rounded)),
+                  Expanded(child: StatCard(label: l.pending, value: '0', color: AppTheme.warningOrange, icon: Icons.schedule_rounded)),
                 ],
               ),
               const SizedBox(height: 28),
@@ -150,11 +146,12 @@ class HomePage extends ConsumerWidget {
               _sectionTitle(
                 l.computerStatus, '',
                 isDark,
-                onTap: () => Navigator.push(context, MaterialPageRoute(
+                onTap: activeDevice != null ? () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => _DeviceDetailPage(device: activeDevice),
-                )),
+                )) : null,
               ),
               const SizedBox(height: 12),
+              if (activeDevice != null)
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -190,6 +187,28 @@ class HomePage extends ConsumerWidget {
                         : null,
                     )),
                   ],
+                ),
+              )
+              else
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: AppTheme.cardShadow,
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.computer_outlined, size: 48, color: isDark ? Colors.white30 : const Color(0xFFD1D5DB)),
+                      const SizedBox(height: 12),
+                      Text(
+                        '暂无设备连接\n请先在电脑端登录任务精灵',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: isDark ? Colors.white38 : AppTheme.textHint, height: 1.5),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 28),

@@ -1,4 +1,6 @@
 import express from 'express';
+import { createServer } from 'http';
+import { initWebSocket } from './ws_relay';
 import cors from 'cors';
 import path from 'path';
 import multer from 'multer';
@@ -279,11 +281,17 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(adminDistPath, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = createServer(app);
+
+// 初始化 WebSocket 服务 (挂载在 /ws 路径)
+initWebSocket(server);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n========================================`);
   console.log(`  任务精灵后端服务已启动`);
   console.log(`  地址: http://0.0.0.0:${PORT}`);
   console.log(`  管理后台: http://0.0.0.0:${PORT}/admin`);
   console.log(`  API: http://0.0.0.0:${PORT}/api`);
+  console.log(`  WebSocket: ws://0.0.0.0:${PORT}/ws`);
   console.log(`========================================\n`);
 });

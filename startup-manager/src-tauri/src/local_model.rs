@@ -966,29 +966,22 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
         "deepseek-r1-1.5b" => "DeepSeek-R1 1.5B",
         "nanbeige-3b" => "Nanbeige 4.1 3B",
         "phi4-mini" => "Phi-4 Mini",
-        _ => "任务精灵本地模型",
+        _ => active_model.as_str(),
     };
     let system_prompt = system_prompt.replace("{model_name}", model_display_name);
 
-    // Chat template: Phi-4 vs ChatML (DeepSeek-R1 / Nanbeige)
-    let is_phi = active_model.contains("phi4");
-    let prompt = if is_phi {
-        format!("<|system|>\n{}<|end|>\n<|user|>\n{}<|end|>\n<|assistant|>\n", system_prompt, user_input)
-    } else {
-        format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, user_input)
-    };
-
-    let stop_token = if is_phi { "<|end|>" } else { "<|im_end|>" };
-
+    // 使用 /v1/chat/completions (服务器内置正确的 chat template，不需要手动格式化)
     let body = serde_json::json!({
-        "prompt": prompt,
-        "n_predict": 2048,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input}
+        ],
+        "max_tokens": 2048,
         "temperature": 0.3,
-        "stop": [stop_token],
         "stream": false,
     });
 
-    let resp = client.post(format!("http://{}:{}/completion", LLAMA_HOST, LLAMA_PORT))
+    let resp = client.post(format!("http://{}:{}/v1/chat/completions", LLAMA_HOST, LLAMA_PORT))
         .json(&body)
         .send().await
         .map_err(|e| format!("推理请求失败: {}", e))?;

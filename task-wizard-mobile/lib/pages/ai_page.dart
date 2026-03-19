@@ -162,8 +162,10 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     String aiContent = '';
 
-    if (!currentModel.isCloud && _isPcOnline() && isWsConnected) {
-      // 电脑本地模型 + 电脑在线 → WS 中转
+    if (_isPcOnline() && isWsConnected) {
+      // 所有模型都通过 WS 中转到电脑执行
+      // 云端模型：电脑调用 DeepSeek API
+      // 本地模型：电脑调用 Ollama
       ws.sendAiChat(
         deviceId: _selectedDevice()?.id ?? '',
         message: text,
@@ -173,42 +175,20 @@ class _AiPageState extends ConsumerState<AiPage> {
         final response = await ws.messages
             .where((m) => m.type == 'ai_response')
             .first
-            .timeout(const Duration(seconds: 30));
-        aiContent = response.data['content'] as String? ?? '电脑未返回结果';
+            .timeout(const Duration(seconds: 60));
+        if (response.data?['error'] == true) {
+          aiContent = '❌ ${response.data?['content'] ?? '电脑处理失败'}';
+        } else {
+          aiContent = response.data?['content'] as String? ?? '电脑未返回结果';
+        }
       } catch (_) {
         aiContent = '⏱ 等待电脑回复超时，请检查电脑是否在线';
       }
-    } else if (currentModel.isCloud) {
-      // 云端模型 → 直接调用 API
-      try {
-        final token = ref.read(authProvider).token ?? '';
-        final resp = await ApiService.cloudAiChat(token, text, model);
-        if (resp.containsKey('error')) {
-          aiContent = '❌ ${resp['error']}';
-        } else {
-          final choices = resp['choices'] as List?;
-          if (choices != null && choices.isNotEmpty) {
-            final content = choices[0]['message']?['content'] ?? '';
-            try {
-              final cleanJson = content.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```\n?'), '').trim();
-              final parsed = _tryParseJson(cleanJson);
-              if (parsed != null && parsed['message'] != null) {
-                aiContent = parsed['message'] as String;
-              } else {
-                aiContent = content;
-              }
-            } catch (_) {
-              aiContent = content;
-            }
-          } else {
-            aiContent = '云端 AI 返回了空响应';
-          }
-        }
-      } catch (e) {
-        aiContent = '❌ 网络错误: $e';
-      }
     } else {
-      aiContent = '❌ 电脑不在线，无法使用电脑本地模型\n请切换到 DeepSeek 云端模型';
+      // 电脑不在线 → 所有模型都无法使用
+      aiContent = '❌ 电脑不在线，无法使用 AI 功能\n\n'
+        '所有模型（包括 DeepSeek 云端和本地模型）都需要电脑在线才能使用。\n'
+        '请确保电脑端已启动任务精灵并登录。';
     }
 
     messages.state = [
@@ -843,7 +823,7 @@ class _ModelPanel extends StatelessWidget {
           ...List.generate(_models.length, (i) {
             final m = _models[i];
             final isSelected = m.id == currentModel;
-            final isDisabled = !m.isCloud && !pcOnline;
+            final isDisabled = !pcOnline;
             return _ModelTile(
               model: m,
               isSelected: isSelected,

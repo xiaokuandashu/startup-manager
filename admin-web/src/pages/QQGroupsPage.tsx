@@ -119,7 +119,7 @@ export default function QQGroupsPage({ token }: QQGroupsPageProps) {
             <h3>{editGroup ? '编辑QQ群' : '新增QQ群'}</h3>
             <div className="modal-form-admin">
               <label>群名称</label>
-              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：自启精灵交流1群" />
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：任务精灵交流1群" />
               <label>群号</label>
               <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} placeholder="QQ群号" />
               <label className="checkbox-label-admin">

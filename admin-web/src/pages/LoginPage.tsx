@@ -41,8 +41,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-card-header">
-          <img src="/logo.png" alt="自启精灵" className="login-logo-img" />
-          <h1>自启精灵</h1>
+          <img src="/logo.png" alt="任务精灵" className="login-logo-img" />
+          <h1>任务精灵</h1>
           <p>管理后台登录</p>
         </div>
         <form onSubmit={handleSubmit} className="login-form">

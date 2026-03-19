@@ -1069,56 +1069,56 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         {!messages.some(m => m.role === 'user') && (
           <div className="ai-capability-section">
             <div className="ai-capability-title">✨ 你的全能 AI 助手</div>
-            <div className="ai-capability-category">☁️ 在线能力</div>
+            <div className="ai-capability-category"><Cloud size={14} /> 在线能力</div>
             <div className="ai-capability-grid">
               <div className="ai-capability-card" onClick={() => { setInput('今天有什么热点新闻'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🌐</span>
+                <span className="ai-capability-icon"><Globe size={22} color="#3b82f6" /></span>
                 <span className="ai-capability-name">智能搜索</span>
                 <span className="ai-capability-desc">实时新闻热点<br/>天气/股票/赛事</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('帮我写一封工作邮件'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">☁️</span>
+                <span className="ai-capability-icon"><Brain size={22} color="#8b5cf6" /></span>
                 <span className="ai-capability-name">DeepSeek</span>
-                <span className="ai-capability-desc">云端深度推理<br/>100次/天免费</span>
+                <span className="ai-capability-desc">云端深度推理<br/>每天100次</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('用我的密钥分析这段代码'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🔑</span>
+                <span className="ai-capability-icon"><Link2 size={22} color="#f59e0b" /></span>
                 <span className="ai-capability-name">自有密钥</span>
                 <span className="ai-capability-desc">无限次数调用<br/>接入你的API</span>
               </div>
             </div>
-            <div className="ai-capability-category">🧠 本地 AI（离线可用·完全隐私）</div>
+            <div className="ai-capability-category"><Cpu size={14} /> 本地 AI（离线可用·完全隐私）</div>
             <div className="ai-capability-grid">
               <div className="ai-capability-card" onClick={() => { setInput('分析一下5G和6G技术的区别'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🔮</span>
+                <span className="ai-capability-icon"><Sparkles size={22} color="#ec4899" /></span>
                 <span className="ai-capability-name">深度思考</span>
                 <span className="ai-capability-desc">展示完整推理链<br/>多模型可选</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('帮我整理一下个人计划'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">💬</span>
+                <span className="ai-capability-icon"><Bot size={22} color="#06b6d4" /></span>
                 <span className="ai-capability-name">私密对话</span>
                 <span className="ai-capability-desc">零数据上传<br/>断网也能用</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('每天早上8:20提醒我打卡'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">📋</span>
+                <span className="ai-capability-icon"><ClipboardList size={22} color="#10b981" /></span>
                 <span className="ai-capability-name">智能任务</span>
                 <span className="ai-capability-desc">自动创建计划<br/>定时执行</span>
               </div>
             </div>
-            <div className="ai-capability-category">⚡ 本地自动化（你的电脑管家）</div>
+            <div className="ai-capability-category"><Terminal size={14} /> 本地自动化（你的电脑管家）</div>
             <div className="ai-capability-grid">
               <div className="ai-capability-card" onClick={() => { setInput('我的电脑是什么配置'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🖥️</span>
+                <span className="ai-capability-icon"><Cpu size={22} color="#6366f1" /></span>
                 <span className="ai-capability-name">系统管理</span>
                 <span className="ai-capability-desc">查配置/清文件<br/>查进程/查网络</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('帮我打开微信'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🔓</span>
+                <span className="ai-capability-icon"><Rocket size={22} color="#f97316" /></span>
                 <span className="ai-capability-name">OpenClaw</span>
                 <span className="ai-capability-desc">一键打开App<br/>自动化工作流</span>
               </div>
               <div className="ai-capability-card" onClick={() => { setInput('打开浏览器搜索AI最新动态'); inputRef.current?.focus(); }}>
-                <span className="ai-capability-icon">🌍</span>
+                <span className="ai-capability-icon"><Globe size={22} color="#14b8a6" /></span>
                 <span className="ai-capability-name">浏览器控制</span>
                 <span className="ai-capability-desc">自动填表单<br/>定时抓取网页</span>
               </div>

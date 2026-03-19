@@ -72,8 +72,8 @@ export default function Layout({ children, username, onLogout, token, onUsername
     <div className="admin-layout">
       <aside className="admin-sidebar">
         <div className="sidebar-logo">
-          <img src="/logo.png" alt="自启精灵" className="logo-icon-img" />
-          <span className="logo-text">自启精灵</span>
+          <img src="/logo.png" alt="任务精灵" className="logo-icon-img" />
+          <span className="logo-text">任务精灵</span>
           <span className="logo-sub">管理后台</span>
         </div>
 

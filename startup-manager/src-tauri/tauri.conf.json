@@ -53,6 +53,9 @@
       ]
     },
     "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "nsis": {
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,

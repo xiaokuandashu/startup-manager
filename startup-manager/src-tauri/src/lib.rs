@@ -1533,6 +1533,17 @@ fn scan_windows_dir(dir: &PathBuf, apps: &mut Vec<InstalledApp>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 全局 panic handler: 写入 crash.log 方便排查 Windows 闪退
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("任务精灵 PANIC: {}\n{:?}\n", info, std::backtrace::Backtrace::capture());
+        let log_path = std::env::current_exe()
+            .unwrap_or_default()
+            .parent()
+            .map(|p| p.join("crash.log"))
+            .unwrap_or_else(|| std::path::PathBuf::from("crash.log"));
+        let _ = std::fs::write(&log_path, &msg);
+    }));
+
     use tauri_plugin_autostart::MacosLauncher;
 
     // 加载自定义模型存储路径

@@ -1799,7 +1799,14 @@ async fn device_heartbeat_loop(token: &str) {
         })
     };
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    if let Err(e) = builder.run(tauri::generate_context!()) {
+        let msg = format!("任务精灵启动失败: {}\n", e);
+        eprintln!("{}", msg);
+        let log_path = std::env::current_exe()
+            .unwrap_or_default()
+            .parent()
+            .map(|p| p.join("crash.log"))
+            .unwrap_or_else(|| std::path::PathBuf::from("crash.log"));
+        let _ = std::fs::write(&log_path, &msg);
+    }
 }

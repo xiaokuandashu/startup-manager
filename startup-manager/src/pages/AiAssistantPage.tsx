@@ -162,7 +162,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showModelPanel, setShowModelPanel] = useState(false);
-  const [activeModel, setActiveModel] = useState('rule_engine');
+  const [activeModel, setActiveModel] = useState(() => localStorage.getItem('ai_active_model') || 'deepseek_cloud');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineInstalled, setEngineInstalled] = useState(false);
@@ -178,6 +178,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [localExecEnabled, setLocalExecEnabled] = useState(true); // OpenClaw/本地执行 默认开启
+  const [thinkingExpanded, setThinkingExpanded] = useState(() => localStorage.getItem('ai_thinking_expanded') === 'true');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -697,6 +698,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               display: 'flex', alignItems: 'center', gap: 4,
               padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+              minWidth: 88, justifyContent: 'center',
               background: localExecEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
               color: localExecEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
             }}
@@ -712,13 +714,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               display: 'flex', alignItems: 'center', gap: 4,
               padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-              background: webSearchEnabled ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'var(--card-bg, #f3f4f6)',
-              color: webSearchEnabled ? '#fff' : 'var(--text-secondary, #9ca3af)',
+              minWidth: 88, justifyContent: 'center',
+              background: webSearchEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
+              color: webSearchEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
             }}
           >
             <Globe size={12} />
             联网搜索
-            {webSearchEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', display: 'inline-block', marginLeft: 2 }} />}
+            {webSearchEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginLeft: 2 }} />}
           </button>
         </div>
       </div>
@@ -773,6 +776,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     handleStartEngine(model.id);
                   }
                   setActiveModel(model.id);
+                  localStorage.setItem('ai_active_model', model.id);
                   setShowModelPanel(false);
                   if (model.id === 'deepseek_cloud') loadDeepseekUsage();
                 } else if (!model.downloading && !downloadingModel.has(model.id)) {
@@ -1007,12 +1011,56 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 </div>
               ) : (
                 <>
-                  <div className="ai-msg-text" dangerouslySetInnerHTML={{
-                    __html: msg.content
-                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                      .replace(/`(.*?)`/g, '<code>$1</code>')
-                      .replace(/\n/g, '<br/>')
-                  }} />
+                  <div className="ai-msg-text">
+                    {(() => {
+                      // 解析 <think>...</think> 标签（深度思考过程）
+                      const thinkMatch = msg.content.match(/<think>(.*?)<\/think>/s);
+                      const thinkContent = thinkMatch ? thinkMatch[1].trim() : '';
+                      const mainContent = thinkMatch
+                        ? msg.content.replace(/<think>.*?<\/think>/s, '').trim()
+                        : msg.content;
+                      return (
+                        <>
+                          {thinkContent && (
+                            <div style={{ marginBottom: 8 }}>
+                              <button
+                                onClick={() => {
+                                  const next = !thinkingExpanded;
+                                  setThinkingExpanded(next);
+                                  localStorage.setItem('ai_thinking_expanded', String(next));
+                                }}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 4,
+                                  background: 'none', border: '1px solid var(--border-color, #e5e7eb)',
+                                  borderRadius: 8, padding: '4px 10px', fontSize: 11,
+                                  color: 'var(--text-secondary, #9ca3af)', cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
+                              >
+                                💭 {thinkingExpanded ? '收起推理过程 ▲' : '查看推理过程 ▼'}
+                              </button>
+                              {thinkingExpanded && (
+                                <div style={{
+                                  marginTop: 6, padding: '8px 12px', borderRadius: 8,
+                                  background: 'var(--hover-bg, #f8f9fa)', fontSize: 12,
+                                  color: 'var(--text-secondary, #6b7280)', lineHeight: 1.6,
+                                  borderLeft: '3px solid #d1d5db', whiteSpace: 'pre-wrap',
+                                }}>
+                                  {thinkContent}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div dangerouslySetInnerHTML={{
+                            __html: mainContent
+                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                              .replace(/`(.*?)`/g, '<code>$1</code>')
+                              .replace(/\n/g, '<br/>')
+                          }} />
+                        </>
+                      );
+                    })()}
+                  </div>
                   {msg.tasks && msg.tasks.length > 0 && (
                     <div className="ai-task-cards">
                       {msg.tasks.map((task, i) => (
@@ -1169,10 +1217,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       </div>
 
       {/* 输入框 */}
-      <div className="ai-input-bar">
+      <div className="ai-input-bar" style={{ display: 'flex', alignItems: 'center' }}>
         <button
           className="ai-btn-image"
           title="发送图片进行分析"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}
           onClick={async () => {
             try {
               const { open } = await import('@tauri-apps/plugin-dialog');

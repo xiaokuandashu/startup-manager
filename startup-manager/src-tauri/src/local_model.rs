@@ -182,17 +182,17 @@ struct ModelPath {
 /// 模型路径映射
 fn model_paths() -> Vec<(&'static str, ModelPath)> {
     vec![
-        ("qwen2.5-1.5b", ModelPath {
-            repo: "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-            filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        ("deepseek-r1-1.5b", ModelPath {
+            repo: "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+            filename: "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         }),
-        ("phi3-mini", ModelPath {
-            repo: "microsoft/Phi-3-mini-4k-instruct-gguf",
-            filename: "Phi-3-mini-4k-instruct-q4.gguf",
+        ("nanbeige-3b", ModelPath {
+            repo: "bartowski/nanbeige4.1-3b-GGUF",
+            filename: "nanbeige4.1-3b-Q4_K_M.gguf",
         }),
-        ("gemma2-2b", ModelPath {
-            repo: "bartowski/gemma-2-2b-it-GGUF",
-            filename: "gemma-2-2b-it-Q4_K_M.gguf",
+        ("phi4-mini", ModelPath {
+            repo: "bartowski/microsoft_Phi-4-mini-instruct-GGUF",
+            filename: "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf",
         }),
     ]
 }
@@ -357,34 +357,34 @@ fn available_models() -> Vec<LocalModel> {
             filename: String::new(),
         },
         LocalModel {
-            id: "qwen2.5-1.5b".into(),
-            name: "🧠 Qwen2.5-1.5B".into(),
-            size: "934MB".into(),
-            description: "通义千问，中文最佳，推荐首选".into(),
-            installed: is_model_valid(&format!("{}/qwen2.5-1.5b-instruct-q4_k_m.gguf", mdir)),
+            id: "deepseek-r1-1.5b".into(),
+            name: "🧠 DeepSeek-R1 1.5B".into(),
+            size: "1.1GB".into(),
+            description: "深度思考(CoT)，R1-70B蒸馏版，推荐首选".into(),
+            installed: is_model_valid(&format!("{}/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf", mdir)),
             downloading: false,
-            download_url: build_download_url("qwen2.5-1.5b"),
-            filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf".into(),
+            download_url: build_download_url("deepseek-r1-1.5b"),
+            filename: "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf".into(),
         },
         LocalModel {
-            id: "phi3-mini".into(),
-            name: "🧠 Phi-3 Mini".into(),
-            size: "2.2GB".into(),
-            description: "微软小模型，推理能力强".into(),
-            installed: is_model_valid(&format!("{}/phi-3-mini-4k-instruct-q4.gguf", mdir)),
+            id: "nanbeige-3b".into(),
+            name: "🧠 Nanbeige 4.1 3B".into(),
+            size: "2.0GB".into(),
+            description: "深度多步推理，3B最强思考模型".into(),
+            installed: is_model_valid(&format!("{}/nanbeige4.1-3b-Q4_K_M.gguf", mdir)),
             downloading: false,
-            download_url: build_download_url("phi3-mini"),
-            filename: "phi-3-mini-4k-instruct-q4.gguf".into(),
+            download_url: build_download_url("nanbeige-3b"),
+            filename: "nanbeige4.1-3b-Q4_K_M.gguf".into(),
         },
         LocalModel {
-            id: "gemma2-2b".into(),
-            name: "🧠 Gemma 2 2B".into(),
-            size: "1.5GB".into(),
-            description: "Google 轻量级模型".into(),
-            installed: is_model_valid(&format!("{}/gemma-2-2b-it-Q4_K_M.gguf", mdir)),
+            id: "phi4-mini".into(),
+            name: "🧠 Phi-4 Mini".into(),
+            size: "2.5GB".into(),
+            description: "微软最新，推理增强型".into(),
+            installed: is_model_valid(&format!("{}/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf", mdir)),
             downloading: false,
-            download_url: build_download_url("gemma2-2b"),
-            filename: "gemma-2-2b-it-Q4_K_M.gguf".into(),
+            download_url: build_download_url("phi4-mini"),
+            filename: "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf".into(),
         },
     ];
     // 正在下载的模型不能显示为已安装

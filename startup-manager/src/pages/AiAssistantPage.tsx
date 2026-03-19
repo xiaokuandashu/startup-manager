@@ -1065,8 +1065,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       {/* 消息列表 */}
       <div className="ai-messages">
-        {/* 空白态: 能力展示卡片 */}
-        {messages.length === 0 && (
+        {/* 空白态: 能力展示卡片 (no user messages yet) */}
+        {!messages.some(m => m.role === 'user') && (
           <div className="ai-capability-section">
             <div className="ai-capability-title">✨ 你的全能 AI 助手</div>
             <div className="ai-capability-category">☁️ 在线能力</div>

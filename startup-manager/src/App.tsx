@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import { initWsRelay, wsRelay } from './wsRelay';
 import { PageType, ToolType, ToolTab } from './types';
 import Header from './components/Header';
 import HomePage from './pages/HomePage';
@@ -153,6 +154,8 @@ const App: React.FC = () => {
     localStorage.setItem('token', authToken);
     // 启动设备心跳上报
     startHeartbeat(authToken);
+    // 启动 WS 中继连接
+    connectWsRelay(authToken);
   };
 
   const handleLogout = () => {
@@ -160,6 +163,7 @@ const App: React.FC = () => {
     setToken(null);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    wsRelay.disconnect();
   };
 
   // 启动设备心跳上报
@@ -175,12 +179,38 @@ const App: React.FC = () => {
     }
   };
 
-  // 应用启动 + 已有 token 时自动启动心跳
+  // 应用启动 + 已有 token 时自动启动心跳 + WS 中继
   useEffect(() => {
     if (token) {
       startHeartbeat(token);
+      connectWsRelay(token);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 启动 WS 中继连接
+  const connectWsRelay = async (authToken: string) => {
+    try {
+      // 获取 deviceId: 优先从 Tauri 获取 hostname
+      let deviceId = localStorage.getItem('ws_device_id') || '';
+      if (!deviceId) {
+        try {
+          if ((window as any).__TAURI_INTERNALS__) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            deviceId = await invoke('get_hostname') || `pc_${Date.now()}`;
+          } else {
+            deviceId = `web_${Date.now()}`;
+          }
+        } catch {
+          deviceId = `pc_${Date.now()}`;
+        }
+        localStorage.setItem('ws_device_id', deviceId);
+      }
+      initWsRelay(() => authToken, () => deviceId);
+      console.log('[App] WS 中继已启动, deviceId:', deviceId);
+    } catch (e) {
+      console.error('[App] WS 中继启动失败:', e);
+    }
+  };
 
   const checkVipBeforeAdd = (): boolean => {
     if (!user) {

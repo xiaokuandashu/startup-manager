@@ -230,8 +230,60 @@ function handleMessage(ws: AuthenticatedSocket, msg: any, authTimeout: NodeJS.Ti
     }
     return;
   }
-}
 
+  // ===== 10. 手机/PC → 服务器: 更新 DeepSeek 自有密钥 =====
+  // 手机端必须先选电脑(device_id)，PC端自带device_id
+  if (type === 'update_key') {
+    const { key } = msg;
+    try {
+      const db = getDB();
+      db.prepare('UPDATE users SET deepseek_key = ? WHERE id = ?').run(key || null, ws.userId);
+      console.log(`[WS] 用户 ${ws.userId} 更新 DeepSeek 密钥 (来自 ${ws.clientType})`);
+
+      // 广播到该用户所有连接的设备(PC + 手机)
+      const pool = connections.get(ws.userId);
+      if (pool) {
+        const syncMsg = JSON.stringify({
+          type: 'key_updated',
+          has_key: !!key,
+          key_preview: key ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : null,
+          from: ws.clientType,
+          device_id: ws.deviceId,
+        });
+        // 通知所有PC
+        pool.pc.forEach((pcWs) => {
+          if (pcWs !== ws && pcWs.readyState === WS_OPEN) pcWs.send(syncMsg);
+        });
+        // 通知所有手机
+        pool.mobile.forEach((mWs: any) => {
+          if (mWs !== ws && mWs.readyState === WS_OPEN) mWs.send(syncMsg);
+        });
+      }
+      // 回复发送者确认
+      ws.send(JSON.stringify({ type: 'key_update_ok', has_key: !!key }));
+    } catch (e: any) {
+      ws.send(JSON.stringify({ type: 'error', error: `密钥更新失败: ${e.message}` }));
+    }
+    return;
+  }
+
+  // ===== 11. 手机/PC → 服务器: 查询当前密钥状态 =====
+  if (type === 'get_key') {
+    try {
+      const db = getDB();
+      const user = db.prepare('SELECT deepseek_key FROM users WHERE id = ?').get(ws.userId) as any;
+      const key = user?.deepseek_key || '';
+      ws.send(JSON.stringify({
+        type: 'key_info',
+        has_key: !!key,
+        key_preview: key ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : null,
+      }));
+    } catch (e: any) {
+      ws.send(JSON.stringify({ type: 'error', error: `查询密钥失败: ${e.message}` }));
+    }
+    return;
+  }
+}
 // ===== 连接管理 =====
 
 function addConnection(ws: AuthenticatedSocket) {

@@ -237,6 +237,42 @@ class _AiPageState extends ConsumerState<AiPage> {
           ref.read(aiModelProvider.notifier).state = id;
           Navigator.pop(ctx);
         },
+        onConfigKey: () {
+          Navigator.pop(ctx);
+          _showKeyConfigDialog();
+        },
+      ),
+    );
+  }
+
+  /// 显示密钥配置对话框（需先选电脑）
+  void _showKeyConfigDialog() {
+    final device = _selectedDevice();
+    if (device == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择一台电脑'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => _KeyConfigDialog(
+        deviceName: device.name.isEmpty ? device.hostname : device.name,
+        onSave: (key) {
+          // 通过 WS 发送密钥更新
+          final ws = ref.read(wsServiceProvider);
+          ws.send(WsMessage(type: 'update_key', data: {
+            'key': key,
+            'device_id': device.id,
+          }));
+          Navigator.pop(ctx);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(key.isEmpty ? '密钥已清除' : '密钥已保存，同步到所有设备'),
+              backgroundColor: AppTheme.successGreen,
+            ),
+          );
+        },
       ),
     );
   }
@@ -740,11 +776,13 @@ class _ModelPanel extends StatelessWidget {
   final bool pcOnline;
   final String currentModel;
   final ValueChanged<String> onSelect;
+  final VoidCallback? onConfigKey;
 
   const _ModelPanel({
     required this.pcOnline,
     required this.currentModel,
     required this.onSelect,
+    this.onConfigKey,
   });
 
   @override
@@ -811,6 +849,7 @@ class _ModelPanel extends StatelessWidget {
               isDisabled: isDisabled,
               isDark: isDark,
               onTap: isDisabled ? null : () => onSelect(m.id),
+              onConfigKey: m.id == 'deepseek_cloud_own' ? onConfigKey : null,
             );
           }),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
@@ -826,6 +865,7 @@ class _ModelTile extends StatelessWidget {
   final bool isDisabled;
   final bool isDark;
   final VoidCallback? onTap;
+  final VoidCallback? onConfigKey;
 
   const _ModelTile({
     required this.model,
@@ -833,6 +873,7 @@ class _ModelTile extends StatelessWidget {
     required this.isDisabled,
     required this.isDark,
     this.onTap,
+    this.onConfigKey,
   });
 
   @override
@@ -931,6 +972,21 @@ class _ModelTile extends StatelessWidget {
                 ],
               ),
             ),
+            // Config key button (only for deepseek_cloud_own)
+            if (onConfigKey != null && !isDisabled) ...[
+              GestureDetector(
+                onTap: onConfigKey,
+                child: Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: model.color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.settings_rounded, size: 15, color: model.color),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             // Status
             if (isSelected && !isDisabled)
               Container(
@@ -1100,6 +1156,129 @@ class _DeviceSelector extends StatelessWidget {
           SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
         ],
       ),
+    );
+  }
+}
+
+// ========================================
+// DeepSeek 密钥配置对话框
+// ========================================
+class _KeyConfigDialog extends StatefulWidget {
+  final String deviceName;
+  final Function(String key) onSave;
+
+  const _KeyConfigDialog({
+    required this.deviceName,
+    required this.onSave,
+  });
+
+  @override
+  State<_KeyConfigDialog> createState() => _KeyConfigDialogState();
+}
+
+class _KeyConfigDialogState extends State<_KeyConfigDialog> {
+  final _keyController = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _keyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AlertDialog(
+      backgroundColor: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.vpn_key_rounded, size: 20, color: const Color(0xFFf59e0b)),
+              const SizedBox(width: 8),
+              Text(
+                '配置 DeepSeek 密钥',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryBlue.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.computer_rounded, size: 13, color: AppTheme.primaryBlue),
+                const SizedBox(width: 4),
+                Text(
+                  '当前电脑: ${widget.deviceName}',
+                  style: TextStyle(fontSize: 11, color: AppTheme.primaryBlue, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '输入您的 DeepSeek API Key，保存后将同步到该账号下所有设备。',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white38 : AppTheme.textHint,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _keyController,
+            obscureText: _obscure,
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white : AppTheme.textPrimary,
+              fontFamily: 'monospace',
+            ),
+            decoration: InputDecoration(
+              hintText: 'sk-xxxx...',
+              prefixIcon: Icon(Icons.key_rounded, size: 18, color: AppTheme.textHint),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  size: 18,
+                  color: AppTheme.textHint,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => widget.onSave(''),
+          child: Text('清除密钥', style: TextStyle(color: AppTheme.errorRed, fontSize: 13)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('取消', style: TextStyle(fontSize: 13)),
+        ),
+        ElevatedButton(
+          onPressed: () => widget.onSave(_keyController.text.trim()),
+          child: const Text('保存并同步', style: TextStyle(fontSize: 13)),
+        ),
+      ],
     );
   }
 }

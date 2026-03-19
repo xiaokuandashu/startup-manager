@@ -373,50 +373,39 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         }
       }
 
-      // ========== 步骤1: 联网搜索（注入真实时间）==========
+      // ========== 步骤1: 联网搜索（本地模型=curl搜索, 云端=注入时间）==========
       const now = new Date();
       const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
       const timeStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]} ${now.toLocaleTimeString('zh-CN')}`;
 
       if (webSearchEnabled && !response) {
-        // 如果是 DeepSeek 云端，不做单独搜索调用（避免消耗 2 次），直接注入时间到主调用
         if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
-          aiInput = `[当前时间: ${timeStr}]
-
-${text}
-
-请根据以上真实时间回答。`;
+          // DeepSeek 云端: 只注入时间到主调用（不额外消耗次数）
+          aiInput = `[当前时间: ${timeStr}]\n\n${text}\n\n请根据以上真实时间回答。`;
         } else {
-          // 本地模型: 用 DeepSeek 搜索一次获取信息
+          // 本地模型: 用 curl 抓取搜索结果（零 API 调用，不消耗云端次数）
           setMessages(prev => prev.map(m =>
             m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
           ));
           try {
-            const token = localStorage.getItem('token');
-            const searchRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                messages: [
-                  { role: 'system', content: `你是智能助手。当前确切时间是: ${timeStr}。根据用户问题回答，必须使用以上真实时间。回答控制在200字内。` },
-                  { role: 'user', content: text }
-                ]
-              }),
+            const { invoke } = await import('@tauri-apps/api/core');
+            const searchQuery = encodeURIComponent(text);
+            const scriptType = navigator.platform.includes('Mac') ? 'bash' : 'powershell';
+            const curlCmd = scriptType === 'bash'
+              ? `curl -sL "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -H "User-Agent: Mozilla/5.0" | sed 's/<[^>]*>//g' | tr -s ' ' | head -c 2000`
+              : `(Invoke-WebRequest -Uri "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -UseBasicParsing).Content -replace '<[^>]+>','' | ForEach-Object { $_.Substring(0, [Math]::Min($_.Length, 2000)) }`;
+            const searchResult = await invoke<string>('execute_script', {
+              scriptContent: curlCmd,
+              scriptType,
             });
-            if (searchRes.ok) {
-              const searchData = await searchRes.json();
-              const summary = searchData.choices?.[0]?.message?.content || '';
-              if (summary) {
-                aiInput = `[实时信息]
-当前时间: ${timeStr}
-搜索结果: ${summary}
-
-[用户问题] ${text}
-
-请结合以上信息回答用户。时间信息以上面的“当前时间”为准。`;
-              }
+            if (searchResult && searchResult.trim().length > 50) {
+              aiInput = `[联网搜索结果]\n当前时间: ${timeStr}\n搜索内容: ${searchResult.trim().substring(0, 1500)}\n\n[用户问题] ${text}\n\n请参考搜索结果回答用户问题。`;
+            } else {
+              aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
             }
-          } catch { /* search failed, use original */ }
+          } catch {
+            aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
+          }
         }
       }
 
@@ -438,7 +427,7 @@ ${text}
               body: JSON.stringify({
                 model: activeModel,
                 messages: [
-                  { role: 'system', content: `你是「任务精灵」AI助手，不是DeepSeek，不是其他任何模型。当用户问你是谁时，回答“我是任务精灵AI助手”。当前时间: ${timeStr}。` },
+                  { role: 'system', content: `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。` },
                   { role: 'user', content: aiInput }
                 ],
               }),

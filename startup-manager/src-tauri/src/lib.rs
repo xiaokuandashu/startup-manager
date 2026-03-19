@@ -1796,3 +1796,4 @@ async fn device_heartbeat_loop(token: &str) {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+// force rebuild

@@ -79,7 +79,7 @@ export default function DashboardPage({ token }: DashboardPageProps) {
     { label: '总用户数', value: data.totalUsers, icon: '👥', color: '#3B82F6', key: 'totalUsers' },
     { label: 'VIP用户', value: data.vipUsers, icon: '💎', color: '#F59E0B', key: 'vipUsers' },
     { label: '今日活跃', value: data.todayActive, icon: '🟢', color: '#22C55E', key: 'todayActive' },
-    { label: '总收入', value: `¥${data.totalRevenue}`, icon: '💰', color: '#EF4444', key: 'totalRevenue' },
+    { label: '总收入', value: `¥${data.totalRevenue ?? 0}`, icon: '💰', color: '#EF4444', key: 'totalRevenue' },
     { label: '总激活码', value: data.totalCodes, icon: '🔑', color: '#8B5CF6', key: 'totalCodes' },
     { label: '已激活', value: data.activatedCodes, icon: '✅', color: '#06B6D4', key: 'activatedCodes' },
     { label: '待使用', value: data.pendingCodes, icon: '⏳', color: '#F97316', key: 'pendingCodes' },

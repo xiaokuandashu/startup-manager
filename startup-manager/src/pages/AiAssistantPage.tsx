@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask, TaskStep } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus, Wifi, WifiOff } from 'lucide-react';
+import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -332,15 +332,45 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     }]);
 
     try {
-      let response: AiResponse;
+      let response: AiResponse | undefined = undefined;
       let aiInput = text;
       let executedCommand = '';
 
-      // ========== 步骤1: 联网搜索（用 DeepSeek 做摘要，对所有模型通用）==========
-      if (webSearchEnabled) {
+      // ========== 步骤0: 本地命令预检测（关键词→直接执行，不依赖 AI 判断）==========
+      const isMac = navigator.platform.includes('Mac');
+      const LOCAL_CMD_PATTERNS: {keywords: string[]; cmd?: string; cmdFn?: (t: string) => string}[] = [
+        { keywords: ['桌面文件', '桌面上文件', '桌面上的', '整理桌面', '桌面清单', '桌面列表'], cmd: isMac ? 'ls -la ~/Desktop' : 'dir %USERPROFILE%\\Desktop' },
+        { keywords: ['配置', '硬件', '系统信息', '电脑信息', '电脑配置', '什么型号'], cmd: isMac ? 'system_profiler SPHardwareDataType' : 'systeminfo' },
+        { keywords: ['内存', '运行内存', 'RAM'], cmd: isMac ? 'sysctl hw.memsize && vm_stat | head -10' : 'wmic memorychip get capacity' },
+        { keywords: ['硬盘', '磁盘', '存储', '剩余空间'], cmd: isMac ? 'df -h' : 'wmic diskdrive get size,model' },
+        { keywords: ['CPU', '处理器', 'cpu'], cmd: isMac ? 'sysctl -n machdep.cpu.brand_string && sysctl -n hw.ncpu' : 'wmic cpu get name' },
+        { keywords: ['进程', '运行中', '占用'], cmd: isMac ? 'ps aux | head -20' : 'tasklist | more' },
+        { keywords: ['网络', 'IP', '网卡', 'ip'], cmd: isMac ? 'ifconfig | grep inet' : 'ipconfig' },
+        { keywords: ['创建文件夹', '新建文件夹'], cmdFn: (t) => {
+          const name = t.match(/叫[\s「」"]*([^\s「」"]+)/)?.[1] || t.match(/建[\s「」"]*([^\s「」"]+)/)?.[1] || 'new_folder';
+          return isMac ? `mkdir -p ~/Desktop/${name}` : `mkdir %USERPROFILE%\\Desktop\\${name}`;
+        }},
+      ];
+
+      if (localExecEnabled && (window as any).__TAURI_INTERNALS__) {
+        const matched = LOCAL_CMD_PATTERNS.find(p => p.keywords.some(k => text.includes(k)));
+        if (matched) {
+          const cmd = matched.cmdFn ? matched.cmdFn(text) : matched.cmd!;
+          response = { message: '正在执行...', response_type: 'execute', execute_command: cmd, tasks: [] };
+          // 跳过 AI 推理，直接进入执行阶段
+        }
+      }
+
+      // ========== 步骤1: 联网搜索（注入真实时间 + DeepSeek 摘要）==========
+      if (webSearchEnabled && !response) {
         setMessages(prev => prev.map(m =>
           m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
         ));
+        // 注入当前真实时间
+        const now = new Date();
+        const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        const timeStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]} ${now.toLocaleTimeString('zh-CN')}`;
+
         try {
           const token = localStorage.getItem('token');
           const searchRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
@@ -348,7 +378,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({
               messages: [
-                { role: 'system', content: '你是联网搜索助手。根据用户问题，直接给出准确、简洁的实时信息回答。如果涉及天气、新闻、价格等实时数据，请给出当前最新信息。回答控制在200字内。' },
+                { role: 'system', content: `你是智能助手。当前确切时间是: ${timeStr}。根据用户问题回答，必须使用以上真实时间。回答控制在200字内。` },
                 { role: 'user', content: text }
               ]
             }),
@@ -357,14 +387,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const searchData = await searchRes.json();
             const summary = searchData.choices?.[0]?.message?.content || '';
             if (summary) {
-              aiInput = `[联网搜索结果]\n${summary}\n\n[用户原始问题] ${text}\n\n请结合以上搜索结果回答用户。`;
+              aiInput = `[实时信息]
+当前时间: ${timeStr}
+搜索结果: ${summary}
+
+[用户问题] ${text}
+
+请结合以上信息回答用户。时间信息以上面的“当前时间”为准。`;
             }
           }
         } catch { /* search failed, use original */ }
       }
 
-      // ========== 步骤2: AI 大脑推理 ==========
-      if ((window as any).__TAURI_INTERNALS__) {
+      // ========== 步骤2: AI 大脑推理（仅在未被预检测拦截时）==========
+      if (!response && (window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
 
         if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
@@ -450,8 +486,13 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
           }
         }
-      } else {
+      } else if (!response) {
         response = { message: `📋 开发模式：「${text}」`, response_type: 'info', tasks: [] };
+      }
+
+      // 确保 response 已赋值
+      if (!response) {
+        response = { message: '🤔 未能理解你的请求，请换个方式试试。', response_type: 'info', tasks: [] };
       }
 
       // ========== 步骤3: 本地执行（当开关开启 + AI 返回 execute 类型）==========
@@ -661,7 +702,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             }}
           >
             <Terminal size={12} />
-            本地执行{localExecEnabled ? ' ✅' : ''}
+            本地执行
+            {localExecEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginLeft: 2 }} />}
           </button>
           <button
             onClick={() => setWebSearchEnabled(!webSearchEnabled)}
@@ -674,8 +716,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               color: webSearchEnabled ? '#fff' : 'var(--text-secondary, #9ca3af)',
             }}
           >
-            {webSearchEnabled ? <Wifi size={12} /> : <WifiOff size={12} />}
-            联网搜索{webSearchEnabled ? ' ✅' : ''}
+            <Globe size={12} />
+            联网搜索
+            {webSearchEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', display: 'inline-block', marginLeft: 2 }} />}
           </button>
         </div>
       </div>

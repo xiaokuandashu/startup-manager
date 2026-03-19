@@ -1728,7 +1728,6 @@ async fn device_heartbeat_loop(token: &str) {
 
             // 启动设备心跳上报（每30秒 POST 到服务器）
             // 设备心跳: 由前端登录后通过 start_device_heartbeat 命令启动（需要 token）
-            let _app_handle = app.handle().clone();
 
             // 启动 OpenClaw Gateway (后台静默)
             std::thread::spawn(|| {
@@ -1796,4 +1795,3 @@ async fn device_heartbeat_loop(token: &str) {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-// force rebuild

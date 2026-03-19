@@ -912,38 +912,45 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         _ => {}
     }
 
-    let system_prompt = r#"你是一个桌面自动化助手。用户会用自然语言描述想做的事。
-你需要理解意图，输出 JSON 格式的任务定义。
+    let system_prompt = r#"你是「任务精灵」AI全能助手。你有两种能力：
 
-输出格式：
-{
-  "message": "回复说明",
-  "response_type": "task_created",
-  "tasks": [{
-    "task_name": "任务名称",
-    "task_type": "application 或 script",
-    "path": "应用路径",
-    "schedule_type": "startup/once/daily/weekly/monthly",
-    "schedule_time": "HH:MM",
-    "enabled": true,
-    "confidence": 0.0-1.0,
-    "recording_name": "录制动作名称（如果有）"
-  }]
-}
+## 能力一：自由对话
+当用户问问题、闲聊、求助时，直接回答。输出JSON：
+{"message":"你的回答","response_type":"info","tasks":[]}
 
-常见 macOS 应用路径：
-- 微信: /Applications/WeChat.app
-- Chrome: /Applications/Google Chrome.app
-- 钉钉: /Applications/DingTalk.app
-- VS Code: /Applications/Visual Studio Code.app
+## 能力二：创建任务
+只有当用户明确要求创建定时任务/自动化操作时，才创建任务。
 
-严格只输出 JSON。"#;
+## 规则
+- 用户问问题 → response_type:"info"，message里写回答，tasks为空
+- 用户要创建任务 → response_type:"task_created"，tasks里放任务
+- 不确定 → 当问题回答
+
+## 可用 step
+- {"order":N,"type":"open_app","app_path":"路径"}
+- {"order":N,"type":"wait","wait_minutes":N}
+- {"order":N,"type":"playback_recording","recording_name":"名称"}
+
+macOS: /Applications/WeChat.app, /Applications/Google Chrome.app, /Applications/DingTalk.app
+Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
+
+## 示例
+输入: 你好
+输出: {"message":"你好！我是任务精灵AI助手，可以帮你创建自动化任务或回答问题。","response_type":"info","tasks":[]}
+
+输入: 每天9点打开微信
+输出: {"message":"已创建","response_type":"task_created","tasks":[{"task_name":"每天打开微信","task_type":"application","path":"/Applications/WeChat.app","schedule_type":"daily","schedule_time":"09:00","schedule_days":[],"enabled":true,"confidence":0.95}]}
+
+输入: 每天8:20打开微信，等5分钟，执行录制动作 微信打卡
+输出: {"message":"已创建链式任务","response_type":"task_created","tasks":[{"task_name":"微信自动打卡","task_type":"chain","path":"","schedule_type":"daily","schedule_time":"08:20","schedule_days":[],"enabled":true,"confidence":0.9,"steps":[{"order":1,"type":"open_app","app_path":"/Applications/WeChat.app"},{"order":2,"type":"wait","wait_minutes":5},{"order":3,"type":"playback_recording","recording_name":"微信打卡"}]}]}
+
+严格输出JSON。"#;
 
     let prompt = format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, user_input);
 
     let body = serde_json::json!({
         "prompt": prompt,
-        "n_predict": 512,
+        "n_predict": 1024,
         "temperature": 0.1,
         "stop": ["<|im_end|>"],
         "stream": false,

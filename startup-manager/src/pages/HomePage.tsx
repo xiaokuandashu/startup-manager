@@ -202,7 +202,7 @@ const exportTaskConfig = async (task: StartupTask) => {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { writeTextFile } = await import('@tauri-apps/plugin-fs');
       const filePath = await save({
-        defaultPath: `自启精灵_${task.name}.json`,
+        defaultPath: `任务精灵_${task.name}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
       if (filePath) {
@@ -216,7 +216,7 @@ const exportTaskConfig = async (task: StartupTask) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `自启精灵_${task.name}.json`;
+      a.download = `任务精灵_${task.name}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -269,38 +269,55 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
         for (const task of currentTasks) {
           if (!task.enabled) continue;
           if (executedRef.current.has(task.id)) continue;
-          if (!task.path) continue;
+          // 链式任务可能没有 path，所以不强制需要 path
+          if (!task.path && (!task.steps || task.steps.length === 0)) continue;
 
           if (shouldExecuteNow(task)) {
-            console.log(`[定时任务] 执行: ${task.name} -> ${task.path}`);
+            console.log(`[定时任务] 执行: ${task.name}`);
             executedRef.current.add(task.id);
             markExecuted(task.id);
 
-            const success = await executeLaunchApp(task.path);
+            let success = false;
 
-            // Phase B: 执行绑定的录制回放
-            if (success && task.recordingId) {
+            // Phase 2: 链式任务走 execute_task_chain
+            if (task.steps && task.steps.length > 0) {
               try {
                 const { invoke } = await import('@tauri-apps/api/core');
-                // 等待应用启动
-                await new Promise(r => setTimeout(r, 3000));
-                await invoke('recording_play', { name: task.recordingName || task.recordingId });
-                console.log(`[录制回放] ${task.recordingName || task.recordingId} 执行完成`);
-              } catch (recErr) {
-                console.error(`[录制回放] 失败:`, recErr);
+                const result = await invoke<string>('execute_task_chain', { steps: task.steps });
+                console.log(`[链式任务] ${task.name} 完成:`, result);
+                success = !result.includes('失败');
+              } catch (e) {
+                console.error(`[链式任务] ${task.name} 失败:`, e);
+                success = false;
+              }
+            } else {
+              // 普通任务走 launch_app
+              success = await executeLaunchApp(task.path);
+
+              // 执行绑定的录制回放
+              if (success && task.recordingId) {
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  await new Promise(r => setTimeout(r, 3000));
+                  await invoke('recording_play', { name: task.recordingName || task.recordingId });
+                  console.log(`[录制回放] ${task.recordingName || task.recordingId} 执行完成`);
+                } catch (recErr) {
+                  console.error(`[录制回放] 失败:`, recErr);
+                }
               }
             }
 
             const statusText = success ? '今日执行成功' : '今日执行失败';
 
-            // 写入日志
             writeLog({
               taskName: task.name,
               taskType: task.taskType,
               timeType: task.timeType,
               executeTime: task.executeTime,
               action: success ? 'start' : 'error',
-              message: success ? `成功启动 ${task.path}` : `启动失败 ${task.path}`,
+              message: success
+                ? (task.steps ? `链式任务执行完成 (${task.steps.length}步)` : `成功启动 ${task.path}`)
+                : (task.steps ? `链式任务执行失败` : `启动失败 ${task.path}`),
               timestamp: nowTimestamp(),
               level: success ? 'success' : 'error',
               statusText,
@@ -467,7 +484,7 @@ const HomePage: React.FC<HomePageProps> = ({ searchQuery, checkVipBeforeAdd, lan
       executeTime: task.executeTime, note: task.note,
       enabled: task.enabled, fileExt: task.fileExt,
     }));
-    const defaultName = selected.length === 1 ? `自启精灵_${selected[0].name}.json` : '自启精灵_多任务列表.json';
+    const defaultName = selected.length === 1 ? `任务精灵_${selected[0].name}.json` : '任务精灵_多任务列表.json';
     try {
       const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
       if (isTauri) {

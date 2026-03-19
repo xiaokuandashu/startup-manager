@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../i18n';
-import { Circle, List, Network, Mouse, MousePointer, Keyboard, Brain, Camera, Crosshair, RefreshCw, FolderOpen, Package, FileText, CircleDot, Hexagon, Clock, Edit3, Save, Trash2, AlertTriangle, Square, CheckCircle2, Pause, Video } from 'lucide-react';
+import { Circle, List, Network, Mouse, MousePointer, Keyboard, Brain, Camera, Crosshair, RefreshCw, FolderOpen, Package, FileText, CircleDot, Hexagon, Clock, Edit3, Save, Trash2, AlertTriangle, Square, CheckCircle2, Pause, Video, ChevronDown, ChevronUp, MapPin, Move } from 'lucide-react';
 import RecordingMindMap from '../components/RecordingMindMap';
 
 interface RecordedStep {
@@ -59,7 +59,20 @@ const MODE_OPTIONS = [
 ];
 
 const STEP_ICONS: Record<string, React.ReactNode> = {
-  mouse_move: <Mouse size={12} />, mouse_click: <MousePointer size={12} />, mouse_release: <MousePointer size={12} />, mouse_scroll: <FileText size={12} />, key_press: <Keyboard size={12} />, key_release: <Keyboard size={12} />,
+  mouse_move: <Move size={12} />, mouse_click: <MapPin size={12} />, mouse_release: <MousePointer size={12} />, mouse_scroll: <FileText size={12} />, key_press: <Keyboard size={12} />, key_release: <Keyboard size={12} />,
+};
+
+// 生成步骤描述文字
+const describeStep = (step: RecordedStep): string => {
+  switch (step.type) {
+    case 'mouse_click': return `点击了 (${Math.round(step.x || 0)}, ${Math.round(step.y || 0)}) 位置${step.button === 'right' ? ' [右键]' : ''}`;
+    case 'mouse_release': return `释放 ${step.button === 'right' ? '右键' : '左键'}`;
+    case 'mouse_move': return `移动到 (${Math.round(step.x || 0)}, ${Math.round(step.y || 0)})`;
+    case 'mouse_scroll': return `滚动 (${step.delta_x || 0}, ${step.delta_y || 0})`;
+    case 'key_press': return `按下键盘 [${step.key || '?'}]`;
+    case 'key_release': return `释放键盘 [${step.key || '?'}]`;
+    default: return step.type;
+  }
 };
 
 const formatDuration = (ms: number): string => {
@@ -89,6 +102,10 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null);
   const [editorView, setEditorView] = useState<'list' | 'mindmap'>('list');
+  const [expandedRec, setExpandedRec] = useState<string | null>(null);
+  const [editingStep, setEditingStep] = useState<{ recId: string; stepIdx: number } | null>(null);
+  const [editX, setEditX] = useState('');
+  const [editY, setEditY] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -539,7 +556,11 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
           </div>
         ) : (
           <div className="rec-cards">
-            {savedRecordings.map(rec => (
+            {savedRecordings.map(rec => {
+              const isExpanded = expandedRec === rec.id;
+              // 只显示有意义的步骤（过滤mouse_move）
+              const meaningfulSteps = rec.steps.filter(s => s.type !== 'mouse_move');
+              return (
               <div key={rec.id} className="rec-card">
                 <div className="rec-card-header">
                   <span className="rec-card-name">{rec.name}</span>
@@ -549,7 +570,97 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                   <span>🕐 {formatDuration(rec.duration_ms)}</span>
                   <span><FileText size={12} style={{marginRight:2}} /> {rec.step_count} 步</span>
                   {rec.nodes && rec.nodes.length > 0 && <span>🌳 {rec.nodes.length} 节点</span>}
+                  <button
+                    className="rec-expand-btn"
+                    onClick={() => setExpandedRec(isExpanded ? null : rec.id)}
+                    title={isExpanded ? '收起步骤预览' : '展开步骤预览'}
+                  >
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {isExpanded ? '收起' : `查看${meaningfulSteps.length}个操作`}
+                  </button>
                 </div>
+
+                {/* Phase 2: 可视化步骤预览 */}
+                {isExpanded && (
+                  <div className="rec-step-visual-list">
+                    {meaningfulSteps.length === 0 ? (
+                      <div className="rec-step-visual-empty">没有可显示的操作步骤</div>
+                    ) : meaningfulSteps.map((step, si) => {
+                      const originalIdx = rec.steps.indexOf(step);
+                      const isEditing = editingStep?.recId === rec.id && editingStep?.stepIdx === originalIdx;
+                      return (
+                        <div key={si} className={`rec-step-visual-card ${step.type}`}>
+                          <div className="rec-step-visual-num">{si + 1}</div>
+                          <div className="rec-step-visual-icon">
+                            {STEP_ICONS[step.type] || <CircleDot size={12} />}
+                          </div>
+                          <div className="rec-step-visual-body">
+                            <div className="rec-step-visual-desc">{describeStep(step)}</div>
+                            <div className="rec-step-visual-meta">
+                              延迟 {step.delay_ms}ms
+                            </div>
+                          </div>
+                          {/* 坐标显示和编辑 */}
+                          {(step.x !== undefined && step.y !== undefined) && (
+                            <div className="rec-step-visual-coord">
+                              {isEditing ? (
+                                <div className="rec-step-coord-edit">
+                                  <label>X:</label>
+                                  <input
+                                    type="number"
+                                    value={editX}
+                                    onChange={e => setEditX(e.target.value)}
+                                    className="rec-coord-input"
+                                  />
+                                  <label>Y:</label>
+                                  <input
+                                    type="number"
+                                    value={editY}
+                                    onChange={e => setEditY(e.target.value)}
+                                    className="rec-coord-input"
+                                  />
+                                  <button
+                                    className="rec-coord-save"
+                                    onClick={async () => {
+                                      const newSteps = [...rec.steps];
+                                      newSteps[originalIdx] = { ...newSteps[originalIdx], x: parseFloat(editX), y: parseFloat(editY) };
+                                      try {
+                                        if ((window as any).__TAURI_INTERNALS__) {
+                                          const { invoke } = await import('@tauri-apps/api/core');
+                                          await invoke('recording_save', {
+                                            name: rec.name, steps: newSteps, durationMs: rec.duration_ms, mode: rec.mode || 'full',
+                                          });
+                                          loadRecordings();
+                                        }
+                                      } catch { /* ignore */ }
+                                      setEditingStep(null);
+                                    }}
+                                  >
+                                    <Save size={10} /> 保存
+                                  </button>
+                                  <button className="rec-coord-cancel" onClick={() => setEditingStep(null)}>✕</button>
+                                </div>
+                              ) : (
+                                <button
+                                  className="rec-step-coord-btn"
+                                  onClick={() => {
+                                    setEditingStep({ recId: rec.id, stepIdx: originalIdx });
+                                    setEditX(String(Math.round(step.x || 0)));
+                                    setEditY(String(Math.round(step.y || 0)));
+                                  }}
+                                  title="点击编辑坐标"
+                                >
+                                  <MapPin size={10} /> ({Math.round(step.x || 0)}, {Math.round(step.y || 0)})
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="rec-card-actions">
                   <button className="rec-btn rec-btn-edit" onClick={() => { setEditingRec(rec); setSelectedNode(null); }}>
                     <Edit3 size={12} style={{marginRight:2}} /> 编辑
@@ -560,7 +671,8 @@ const RecordingPage: React.FC<RecordingPageProps> = ({ lang: _lang = 'zh' }) => 
                   <button className="rec-btn rec-btn-delete" onClick={() => handleDelete(rec.id)}><Trash2 size={14} /></button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

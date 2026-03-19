@@ -57,6 +57,11 @@ const TaskRow: React.FC<TaskRowProps> = ({
       {/* 任务名称 */}
       <div className="task-cell task-name-cell" title={task.name}>
         <span>{task.name}</span>
+        {task.steps && task.steps.length > 0 && (
+          <span className="chain-badge" title={`链式任务: ${task.steps.length}个步骤`}>
+            链式: {task.steps.length}步
+          </span>
+        )}
       </div>
       {/* 任务类型 */}
       <div className="task-cell" title={task.taskType}>{task.taskType}</div>

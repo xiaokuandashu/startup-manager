@@ -240,7 +240,7 @@ type TranslationKeys = {
 
 const translations: Record<Language, TranslationKeys> = {
   zh: {
-    appTitle: '自启精灵',
+    appTitle: '任务精灵',
     home: '首页',
     logs: '日志',
     settings: '设置',

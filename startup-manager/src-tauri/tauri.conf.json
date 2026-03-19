@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "自启精灵",
+  "productName": "任务精灵",
   "version": "0.2.10",
   "identifier": "com.a.startup-manager",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "自启精灵",
+        "title": "任务精灵",
         "width": 1440,
         "height": 900,
         "minWidth": 1000,

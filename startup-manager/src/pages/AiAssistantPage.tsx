@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StartupTask } from '../types';
+import { StartupTask, TaskStep } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, MessageCircle, Globe, Pin, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download } from 'lucide-react';
+import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -13,6 +13,7 @@ interface AiTaskResult {
   enabled: boolean;
   confidence: number;
   recording_name?: string;
+  steps?: TaskStep[];  // Phase 2: 链式任务步骤
 }
 
 interface AiResponse {
@@ -49,10 +50,11 @@ interface ModelInfo {
 }
 
 const QUICK_COMMANDS = [
-  { label: '打开微信', icon: <MessageCircle size={14} /> },
-  { label: '每天9点打开Chrome', icon: <Globe size={14} /> },
-  { label: '开机启动钉钉', icon: <Pin size={14} /> },
-  { label: '查看所有任务', icon: <ClipboardList size={14} /> },
+  { label: '每天8:20打开微信，执行打卡动作', icon: <Smartphone size={14} /> },
+  { label: '打开钉钉签到，等5分钟后关闭', icon: <Clock size={14} /> },
+  { label: '开机依次启动3个应用', icon: <Rocket size={14} /> },
+  { label: '每天9点打开Chrome截图保存', icon: <Globe size={14} /> },
+  { label: '查看我的录制动作列表', icon: <ClipboardList size={14} /> },
   { label: '帮助', icon: <Lightbulb size={14} /> },
 ];
 
@@ -64,10 +66,21 @@ const SCHEDULE_LABELS: Record<string, React.ReactNode> = {
   monthly: <><CalendarDays size={12} /> 每月</>,
 };
 
+// Phase 2: 步骤类型对应的图标和标签
+const STEP_TYPE_META: Record<string, { icon: React.ReactNode; label: string }> = {
+  open_app: { icon: <Smartphone size={14} />, label: '打开应用' },
+  wait: { icon: <Timer size={14} />, label: '等待' },
+  playback_recording: { icon: <Play size={14} />, label: '播放录制' },
+  execute_script: { icon: <Terminal size={14} />, label: '执行脚本' },
+  file_action: { icon: <FolderOpen size={14} />, label: '文件操作' },
+  vision_caption: { icon: <Brain size={14} />, label: '图片理解' },
+  browser_action: { icon: <Globe size={14} />, label: '浏览器操作' },
+};
+
 const WELCOME_MSG: ChatMessage = {
   id: 0,
   role: 'ai',
-  content: '👋 你好！我是 AI 助手。\n\n告诉我你想做什么，我来帮你创建自动化任务。\n\n比如：「打开微信」「每天9点打开Chrome」「开机启动钉钉」',
+  content: '👋 你好！我是任务精灵 AI 助手。\n\n我可以帮你创建**简单或复杂**的自动化任务：\n\n🔹 简单：「每天9点打开Chrome」\n🔹 复杂：「每天8:20打开微信，执行动作1，等10分钟，执行动作2」\n🔹 链式：「开机启动钉钉 + 企业微信 + 飞书」\n\n试试下面的快捷指令 👇',
   timestamp: Date.now(),
 };
 
@@ -105,12 +118,13 @@ const mapToStartupTask = (task: AiTaskResult): StartupTask => {
     application: '打开应用',
     script: '打开执行文件',
     path: '路径打开应用',
+    chain: '链式任务',
   };
 
   return {
     id: Date.now().toString() + '_' + Math.random().toString(36).slice(2, 6),
     name: task.task_name,
-    path: task.path,
+    path: task.path || '',
     enabled: task.enabled,
     type: task.task_type === 'script' ? 'script' : 'application',
     taskType: taskTypeMap[task.task_type] || '打开应用',
@@ -118,12 +132,28 @@ const mapToStartupTask = (task: AiTaskResult): StartupTask => {
     executeTime: task.schedule_time || '',
     timeUntilExec: '',
     status: 'stopped' as const,
-    note: `AI 创建 · ${timeTypeMap[task.schedule_type] || ''}`,
-    fileExt: task.path.includes('.') ? '.' + task.path.split('.').pop() : undefined,
+    note: `AI 创建 · ${timeTypeMap[task.schedule_type] || ''}${task.steps ? ` · ${task.steps.length}步` : ''}`,
+    fileExt: task.path?.includes('.') ? '.' + task.path.split('.').pop() : undefined,
     recordingId: task.recording_name || undefined,
     recordingName: task.recording_name || undefined,
+    steps: task.steps || undefined,
   };
 };
+
+// Phase 2: JSON 容错解析器（处理本地小模型的格式错误）
+function safeParseJSON(raw: string): Record<string, unknown> | null {
+  // 直接解析
+  try { return JSON.parse(raw); } catch {}
+  // 提取 JSON 块
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) { try { return JSON.parse(match[0]); } catch {} }
+  // 修复常见错误（末尾多余逗号）
+  if (match) {
+    const fixed = match[0].replace(/,\s*([}\]])/g, '$1');
+    try { return JSON.parse(fixed); } catch {}
+  }
+  return null;
+}
 
 const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTask }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(loadChatHistory);
@@ -141,6 +171,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [keyInput, setKeyInput] = useState('');
   const [keySaving, setKeySaving] = useState(false);
   const [keyMsg, setKeyMsg] = useState('');
+  // OpenClaw 状态
+  const [openclawStatus, setOpenclawStatus] = useState<{installed: boolean; running: boolean; version: string}>({installed: false, running: false, version: ''});
+  const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -210,6 +243,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         setModels(status.models);
         setEngineRunning(status.engine_running);
         setEngineInstalled(status.engine_installed);
+        // 同时检查 OpenClaw 状态
+        try {
+          const ocStatus = await invoke<{installed: boolean; running: boolean; version: string; port: number}>('openclaw_status');
+          setOpenclawStatus(ocStatus);
+        } catch { /* openclaw not available */ }
       }
     } catch { /* ignore */ }
   };
@@ -307,7 +345,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             try {
               const cloudResult = await invoke<string>('ai_cloud_parse', { input: text });
               const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              response = JSON.parse(cleanJson) as AiResponse;
+              const parsed = safeParseJSON(cleanJson);
+              if (parsed && (parsed as any).message) {
+                response = parsed as unknown as AiResponse;
+              } else {
+                response = { message: cleanJson || cloudResult, response_type: 'info', tasks: [] };
+              }
             } catch {
               response.message = '🤔 AI 云端暂时不可用，请试试更简单的表达方式。';
               response.response_type = 'info';
@@ -339,10 +382,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             } else if (proxyRes.ok) {
               const data = await proxyRes.json();
               const content = data.choices?.[0]?.message?.content || '';
-              try {
-                const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-                response = JSON.parse(cleanJson) as AiResponse;
-              } catch {
+              const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              const parsed = safeParseJSON(cleanJson);
+              if (parsed && (parsed as any).message) {
+                response = parsed as unknown as AiResponse;
+              } else {
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
               // 刷新剩余次数 — 先乐观递减，再从服务器刷新
@@ -373,10 +417,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             if (proxyRes.ok) {
               const data = await proxyRes.json();
               const content = data.choices?.[0]?.message?.content || '';
-              try {
-                const cleanJson = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();
-                response = JSON.parse(cleanJson) as AiResponse;
-              } catch {
+              const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              const parsed = safeParseJSON(cleanJson);
+              if (parsed && (parsed as any).message) {
+                response = parsed as unknown as AiResponse;
+              } else {
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
             } else {
@@ -414,7 +459,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             }
             if (inferResult) {
               const cleanJson = inferResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              response = JSON.parse(cleanJson) as AiResponse;
+              const parsed = safeParseJSON(cleanJson);
+              if (parsed && (parsed as any).message) {
+                response = parsed as unknown as AiResponse;
+              } else {
+                response = { message: cleanJson || inferResult, response_type: 'info', tasks: [] };
+              }
             } else {
               response = { message: `❌ 本地模型推理失败: ${lastError}`, response_type: 'error', tasks: [] };
             }
@@ -422,13 +472,38 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
           }
         }
-      } else {
-        response = {
-          message: `📋 模拟解析：「${text}」\n\n这是开发模式，实际运行时将调用 AI 引擎。`,
-          response_type: 'info',
-          tasks: [],
-        };
-      }
+        } else if (activeModel === 'openclaw') {
+          // OpenClaw Agent 执行
+          setMessages(prev => prev.map(m =>
+            m.id === loadingId ? { ...m, content: '🤖 OpenClaw Agent 执行中...' } : m
+          ));
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const result = await invoke<{success: boolean; output: string; requires_auth: boolean; auth_level: string; tool_used: string}>('openclaw_execute', { prompt: text });
+            if (result.requires_auth) {
+              setAuthConfirm({ visible: true, prompt: text, level: result.auth_level, confirmCount: 0 });
+              response = {
+                message: '⚠️ 此操作需要您的授权，请在弹窗中确认执行。',
+                response_type: 'info',
+                tasks: [],
+              };
+            } else {
+              response = {
+                message: '✅ OpenClaw 执行完成\n\n' + result.output,
+                response_type: 'info',
+                tasks: [],
+              };
+            }
+          } catch (e) {
+            response = { message: '❌ OpenClaw 执行失败: ' + e, response_type: 'error', tasks: [] };
+          }
+        } else {
+          response = {
+            message: `📋 模拟解析：「${text}」\n\n这是开发模式，实际运行时将调用 AI 引擎。`,
+            response_type: 'info',
+            tasks: [],
+          };
+        }
 
       const aiMsg: ChatMessage = {
         id: loadingId,
@@ -465,8 +540,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       const existing: StartupTask[] = JSON.parse(localStorage.getItem(TASKS_STORAGE_KEY) || '[]');
       const newTask = mapToStartupTask(task);
 
-      // 自动匹配录制动作
-      if (task.recording_name) {
+      // 自动匹配录制动作（简单任务）
+      if (task.recording_name && !task.steps) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           const recList = await invoke<{name:string}[]>('recording_list');
@@ -478,13 +553,33 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         } catch { /* 无录制列表时忽略 */ }
       }
 
+      // Phase 2: 链式任务中的录制动作匹配
+      if (newTask.steps && newTask.steps.length > 0) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const recList = await invoke<{name:string}[]>('recording_list');
+          if (recList && recList.length > 0) {
+            newTask.steps = newTask.steps.map(step => {
+              if (step.type === 'playback_recording' && step.recording_name) {
+                const match = recList.find(r => r.name.includes(step.recording_name!) || step.recording_name!.includes(r.name));
+                if (match) {
+                  return { ...step, recording_id: match.name, recording_name: match.name };
+                }
+              }
+              return step;
+            });
+          }
+        } catch { /* 无录制列表时忽略 */ }
+      }
+
       existing.push(newTask);
       localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(existing));
 
+      const stepInfo = newTask.steps ? `\n包含 ${newTask.steps.length} 个执行步骤。` : '';
       setMessages(prev => [...prev, {
         id: Date.now(),
         role: 'ai',
-        content: `✅ 任务「${task.task_name}」已添加到主页任务列表！\n\n切换到主页即可看到。`,
+        content: `✅ 任务「${task.task_name}」已添加到主页任务列表！${stepInfo}\n\n切换到主页即可看到。`,
         timestamp: Date.now(),
       }]);
     } catch (e) {
@@ -525,7 +620,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       {/* 顶部模型状态栏 */}
       <div className="ai-model-bar">
         <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
-          <span className={`ai-model-dot ${engineRunning || activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user' ? '' : 'offline'}`} />
+          <span className={`ai-model-dot ${engineRunning || activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user' || (activeModel === 'openclaw' && openclawStatus.running) ? '' : 'offline'}`} />
           当前模型：
           {activeModel === 'rule_engine' ? (
             '请选择 AI 模型'
@@ -534,6 +629,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               <Cloud size={14} style={{marginRight:4,opacity:0.7}} />
               DeepSeek 云端
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#fef3c7', color: '#b45309', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>官方</span>
+            </span>
+          ) : activeModel === 'openclaw' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <Cpu size={14} style={{marginRight:4,opacity:0.7}} />
+              OpenClaw {openclawStatus.running ? '✅' : '⚪'}
+              <span style={{ marginLeft: 6, padding: '1px 6px', background: '#eff6ff', color: '#3b82f6', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>本地</span>
             </span>
           ) : activeModel === 'deepseek_user' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
@@ -848,9 +949,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                         <div key={i} className="ai-task-card">
                           <div className="ai-task-card-header">
                             <span className="ai-task-type-badge">
-                              {task.task_type === 'application' ? <Smartphone size={14} style={{marginRight:3,verticalAlign:'middle'}} /> :
+                              {task.task_type === 'chain' ? <Link2 size={14} style={{marginRight:3,verticalAlign:'middle'}} /> :
+                               task.task_type === 'application' ? <Smartphone size={14} style={{marginRight:3,verticalAlign:'middle'}} /> :
                                task.task_type === 'script' ? <FileCode size={14} style={{marginRight:3,verticalAlign:'middle'}} /> : <FolderOpen size={14} style={{marginRight:3,verticalAlign:'middle'}} />}
-                              {task.task_type}
+                              {task.task_type === 'chain' ? '链式任务' : task.task_type}
                             </span>
                             <span className="ai-task-schedule">
                               {SCHEDULE_LABELS[task.schedule_type] || task.schedule_type}
@@ -861,7 +963,66 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                           {task.path && (
                             <div className="ai-task-card-path">{task.path}</div>
                           )}
-                          {task.recording_name && (
+                          {/* Phase 2: 链式任务步骤预览 */}
+                          {task.steps && task.steps.length > 0 && (
+                            <div className="task-chain-preview">
+                              {task.steps
+                                .sort((a, b) => a.order - b.order)
+                                .map((step, si) => {
+                                  const meta = STEP_TYPE_META[step.type] || { icon: <Cpu size={14} />, label: step.type };
+                                  let detail = '';
+                                  if (step.type === 'open_app') detail = step.app_path || '';
+                                  else if (step.type === 'wait') detail = step.wait_minutes ? `${step.wait_minutes}分钟` : `${step.wait_seconds || 0}秒`;
+                                  else if (step.type === 'playback_recording') detail = step.recording_name || '';
+                                  else if (step.type === 'execute_script') detail = step.script_type || 'script';
+                                  else if (step.type === 'browser_action') detail = step.url || step.tool || '';
+                                  return (
+                                    <React.Fragment key={si}>
+                                      <div className="chain-step-item">
+                                        <span className="chain-step-icon">{meta.icon}</span>
+                                        <span className="chain-step-label">{meta.label}</span>
+                                        {detail && <span className="chain-step-detail">{detail}</span>}
+                                      </div>
+                                      {si < task.steps!.length - 1 && (
+                                        <div className="chain-step-connector">
+                                          <ArrowDown size={12} />
+                                        </div>
+                                      )}
+                                    </React.Fragment>
+                                  );
+                                })}
+                            </div>
+                          )}
+                          {/* Phase 2: 脚本预览确认 */}
+                          {task.steps?.filter((s: any) => s.type === 'execute_script').map((s: any, si: number) => (
+                            <div key={`script-${si}`} className="ai-script-preview">
+                              <div className="ai-script-preview-header">
+                                <span className="ai-script-type-badge">{s.script_type || 'bash'}</span>
+                                <span style={{fontSize: 11, color: 'var(--text-secondary, #9ca3af)'}}>脚本预览</span>
+                                <button
+                                  className="ai-script-run-btn"
+                                  onClick={async () => {
+                                    try {
+                                      const { invoke } = await import('@tauri-apps/api/core');
+                                      const authLevel = await invoke<string>('script_auth_check', { scriptContent: s.script_content });
+                                      if (authLevel !== 'none') {
+                                        setAuthConfirm({ visible: true, prompt: s.script_content, level: authLevel, confirmCount: 0 });
+                                        return;
+                                      }
+                                      const result = await invoke<string>('execute_script', { scriptContent: s.script_content, scriptType: s.script_type || 'bash' });
+                                      setMessages(prev => [...prev, { id: Date.now(), role: 'ai' as const, content: '✅ 脚本执行完成:\n' + result, timestamp: Date.now() }]);
+                                    } catch (e) {
+                                      setMessages(prev => [...prev, { id: Date.now(), role: 'ai' as const, content: '❌ 脚本执行失败: ' + e, timestamp: Date.now() }]);
+                                    }
+                                  }}
+                                >
+                                  ▶ 立即执行
+                                </button>
+                              </div>
+                              <pre className="ai-script-code"><code>{s.script_content}</code></pre>
+                            </div>
+                          ))}
+                          {task.recording_name && !task.steps && (
                             <div className="ai-task-card-path" style={{ color: '#0066cc', marginTop: 4 }}>
                               <Bot size={12} style={{marginRight:3,verticalAlign:'middle'}} />
                               附带录制动作: {task.recording_name}
@@ -904,6 +1065,33 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       {/* 输入框 */}
       <div className="ai-input-bar">
+        <button
+          className="ai-btn-image"
+          title="发送图片进行分析"
+          onClick={async () => {
+            try {
+              const { open } = await import('@tauri-apps/plugin-dialog');
+              const selected = await open({
+                multiple: false,
+                filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+              });
+              if (selected && typeof selected === 'string') {
+                const loadingId = Date.now();
+                setMessages(prev => [...prev,
+                  { id: loadingId - 1, role: 'user' as const, content: `📷 发送图片: ${selected.split('/').pop()}`, timestamp: Date.now() },
+                  { id: loadingId, role: 'ai' as const, content: '🔍 正在分析图片...', timestamp: Date.now() },
+                ]);
+                const { invoke } = await import('@tauri-apps/api/core');
+                const result = await invoke<string>('image_analyze', { imagePath: selected });
+                setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, content: result } : m));
+              }
+            } catch (e) {
+              setMessages(prev => [...prev, { id: Date.now(), role: 'ai' as const, content: '❌ 图片分析失败: ' + e, timestamp: Date.now() }]);
+            }
+          }}
+        >
+          <ImagePlus size={18} />
+        </button>
         <input
           ref={inputRef}
           type="text"
@@ -926,6 +1114,59 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           )}
         </button>
       </div>
+
+
+      {/* OpenClaw 授权确认弹窗 */}
+      {authConfirm.visible && (
+        <div className="rec-save-dialog">
+          <div className="rec-save-dialog-inner" style={{maxWidth: 420}}>
+            <h4 style={{color: authConfirm.level === 'critical' ? '#ef4444' : '#f59e0b'}}>
+              {authConfirm.level === 'critical' ? '🔴 非常敏感操作' : '🟡 敏感操作'}
+            </h4>
+            <p style={{fontSize: 13, color: 'var(--text-secondary, #6b7280)', margin: '8px 0'}}>
+              {authConfirm.prompt}
+            </p>
+            <p style={{fontSize: 12, color: 'var(--text-secondary, #9ca3af)'}}>
+              {authConfirm.level === 'critical'
+                ? `需要确认两次 (已确认 ${authConfirm.confirmCount}/2)`
+                : '需要确认一次'}
+            </p>
+            <div className="rec-save-actions">
+              <button className="rec-btn rec-btn-cancel" onClick={() => setAuthConfirm({visible: false, prompt: '', level: '', confirmCount: 0})}>
+                取消
+              </button>
+              <button
+                className="rec-btn rec-btn-save"
+                style={{background: authConfirm.level === 'critical' ? '#ef4444' : '#f59e0b'}}
+                onClick={async () => {
+                  if (authConfirm.level === 'critical' && authConfirm.confirmCount < 1) {
+                    setAuthConfirm(prev => ({...prev, confirmCount: prev.confirmCount + 1}));
+                    return;
+                  }
+                  setAuthConfirm({visible: false, prompt: '', level: '', confirmCount: 0});
+                  try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const result = await invoke<{success: boolean; output: string}>('openclaw_execute_confirmed', { prompt: authConfirm.prompt });
+                    setMessages(prev => [...prev, {
+                      id: Date.now(), role: 'ai' as const,
+                      content: '✅ 已授权执行完成\n\n' + result.output,
+                      timestamp: Date.now(),
+                    }]);
+                  } catch (e) {
+                    setMessages(prev => [...prev, {
+                      id: Date.now(), role: 'ai' as const,
+                      content: '❌ 授权执行失败: ' + e,
+                      timestamp: Date.now(),
+                    }]);
+                  }
+                }}
+              >
+                {authConfirm.level === 'critical' && authConfirm.confirmCount < 1 ? '第一次确认' : '确认执行'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

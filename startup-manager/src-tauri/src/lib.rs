@@ -10,6 +10,8 @@ mod recorder;
 mod local_model;
 mod accessibility;
 mod marketplace;
+mod openclaw;
+mod ws_server;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledApp {
@@ -596,10 +598,55 @@ fn ai_parse_intent(input: String) -> ai_engine::AiResponse {
 #[tauri::command]
 async fn ai_cloud_parse(input: String) -> Result<String, String> {
     let api_key = "sk-3d0295d2c9084d8ba7681135c586c505";
-    let system_prompt = r#"你是自启精灵的AI助手，帮用户创建桌面自动化任务。根据用户输入，返回JSON格式的任务。
-返回格式：{"message":"给用户的回复","response_type":"task_created","tasks":[{"task_name":"任务名","task_type":"application/script/path","path":"应用或脚本路径","schedule_type":"startup/once/daily/weekly/monthly","schedule_time":"HH:MM","schedule_days":[],"enabled":true,"confidence":0.9,"recording_name":"录制动作名称"}]}
-如果用户的问题与任务无关,返回：{"message":"你的回答","response_type":"info","tasks":[]}
-只返回JSON,不要其他内容。"#;
+    let system_prompt = r#"你是「任务精灵」AI全能助手。你有两种能力：
+
+## 能力一：自由对话（最重要）
+当用户问问题、闲聊、求助、查询信息时，直接用自然语言回答。输出JSON格式：
+{"message":"你的回答内容","response_type":"info","tasks":[]}
+
+你可以回答任何问题，包括但不限于：
+- 电脑配置、系统信息、软件使用方法
+- 编程问题、技术咨询
+- 日常闲聊、问候
+- 使用帮助和建议
+
+## 能力二：创建自动化任务
+只有当用户**明确要求创建定时任务、自动化操作**时（包含"每天"/"定时"/"打开XX"/"启动"/"执行"等关键词），才创建任务。
+
+### 任务类型
+1. 简单任务: task_type 为 "application" 或 "script"
+2. 链式任务（含"然后"/"接着"/"等X分钟"/"先...再..."）: task_type 为 "chain"，含 steps 数组
+
+### 可用 step 类型
+- {"order":N,"type":"open_app","app_path":"路径"}
+- {"order":N,"type":"wait","wait_seconds":N} 或 {"order":N,"type":"wait","wait_minutes":N}
+- {"order":N,"type":"playback_recording","recording_name":"名称"}
+- {"order":N,"type":"execute_script","script_content":"代码","script_type":"bash/applescript/powershell"}
+- {"order":N,"type":"browser_action","tool":"browser_navigate","url":"URL"}
+
+### 平台路径
+macOS: /Applications/WeChat.app, /Applications/Google Chrome.app, /Applications/DingTalk.app, /Applications/Feishu.app
+Windows: C:\Program Files\Tencent\WeChat\WeChat.exe, C:\Program Files\Google\Chrome\Application\chrome.exe
+
+## 判断规则（非常重要）
+- 用户问问题 → response_type:"info"，message里写详细回答，tasks为空
+- 用户要求创建任务 → response_type:"task_created"，message写确认，tasks里放任务
+- 不确定时 → 当做问问题处理，友好回答
+
+## 示例
+输入: 我电脑什么配置
+输出: {"message":"抱歉，我目前无法直接查看您的电脑硬件配置。您可以通过以下方式查看：\n\nmacOS: 点击左上角  → 关于本机\nWindows: 右键此电脑 → 属性\n\n如果您需要我帮您自动执行查看命令，可以说：执行命令查看系统信息","response_type":"info","tasks":[]}
+
+输入: 你好
+输出: {"message":"你好！👋 我是任务精灵AI助手。\n\n我可以帮你：\n• 🤖 创建自动化任务（如：每天9点打开微信）\n• 💬 回答各种问题\n• 🔧 提供技术支持\n\n有什么我能帮到你的吗？","response_type":"info","tasks":[]}
+
+输入: 每天9点打开微信
+输出: {"message":"已创建每天打开微信的任务","response_type":"task_created","tasks":[{"task_name":"每天打开微信","task_type":"application","path":"/Applications/WeChat.app","schedule_type":"daily","schedule_time":"09:00","schedule_days":[],"enabled":true,"confidence":0.95}]}
+
+输入: 先打开微信，等5分钟，再执行录制动作 打卡
+输出: {"message":"已创建链式任务","response_type":"task_created","tasks":[{"task_name":"微信自动打卡","task_type":"chain","path":"","schedule_type":"daily","schedule_time":"08:20","schedule_days":[],"enabled":true,"confidence":0.9,"steps":[{"order":1,"type":"open_app","app_path":"/Applications/WeChat.app"},{"order":2,"type":"wait","wait_minutes":5},{"order":3,"type":"playback_recording","recording_name":"打卡"}]}]}
+
+严格输出JSON格式，不要输出任何JSON以外的内容。"#;
 
     let body = serde_json::json!({
         "model": "deepseek-chat",
@@ -657,6 +704,473 @@ async fn ai_cloud_parse(input: String) -> Result<String, String> {
         }
     }).await.map_err(|e| format!("任务失败: {}", e))?;
     result
+}
+
+/// Phase 2: 链式任务执行引擎
+#[tauri::command]
+async fn execute_task_chain(steps: Vec<serde_json::Value>) -> Result<String, String> {
+    let total = steps.len();
+    let mut results: Vec<String> = Vec::new();
+
+    for (i, step) in steps.iter().enumerate() {
+        let step_type = step["type"].as_str().unwrap_or("");
+        let step_num = i + 1;
+
+        match step_type {
+            "open_app" => {
+                let app_path = step["app_path"].as_str().unwrap_or("").to_string();
+                if app_path.is_empty() {
+                    results.push(format!("[{}/{}] open_app: 路径为空，跳过", step_num, total));
+                    continue;
+                }
+                // 检查路径是否存在
+                let path = std::path::Path::new(&app_path);
+                if !path.exists() {
+                    results.push(format!("[{}/{}] open_app: 路径不存在 {}，跳过", step_num, total, app_path));
+                    continue;
+                }
+                match launch_app(app_path.clone()) {
+                    Ok(msg) => results.push(format!("[{}/{}] open_app: {}", step_num, total, msg)),
+                    Err(e) => results.push(format!("[{}/{}] open_app 失败: {}", step_num, total, e)),
+                }
+                // 等待应用启动
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+            "wait" => {
+                let secs = step["wait_seconds"].as_u64().unwrap_or(0);
+                let mins = step["wait_minutes"].as_u64().unwrap_or(0);
+                let total_secs = secs + mins * 60;
+                if total_secs > 0 {
+                    results.push(format!("[{}/{}] wait: 等待 {}秒...", step_num, total, total_secs));
+                    tokio::time::sleep(std::time::Duration::from_secs(total_secs)).await;
+                    results.push(format!("[{}/{}] wait: 等待完成", step_num, total));
+                }
+            }
+            "playback_recording" => {
+                let rec_name = step["recording_name"].as_str().unwrap_or("");
+                if rec_name.is_empty() {
+                    results.push(format!("[{}/{}] playback_recording: 名称为空，跳过", step_num, total));
+                    continue;
+                }
+                match recorder::list_recordings() {
+                    Ok(recordings) => {
+                        let found = recordings.iter().find(|r| {
+                            r.name == rec_name
+                                || r.name.contains(rec_name)
+                                || rec_name.contains(&r.name)
+                                || r.id == rec_name
+                        });
+                        if let Some(rec) = found {
+                            results.push(format!("[{}/{}] playback_recording: 开始回放 '{}'", step_num, total, rec.name));
+                            let steps_clone = rec.steps.clone();
+                            let duration_ms = rec.duration_ms;
+                            let handle = tokio::task::spawn_blocking(move || {
+                                recorder::play_recording(steps_clone)
+                            });
+                            let wait_ms = duration_ms + 2000;
+                            tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+                            match handle.await {
+                                Ok(Ok(())) => results.push(format!("[{}/{}] playback_recording: '{}' 回放完成", step_num, total, rec.name)),
+                                Ok(Err(e)) => results.push(format!("[{}/{}] playback_recording 失败: {}", step_num, total, e)),
+                                Err(e) => results.push(format!("[{}/{}] playback_recording 线程错误: {}", step_num, total, e)),
+                            }
+                        } else {
+                            results.push(format!("[{}/{}] playback_recording: 未找到录制 '{}'，跳过", step_num, total, rec_name));
+                        }
+                    }
+                    Err(e) => {
+                        results.push(format!("[{}/{}] playback_recording: 读取录制列表失败: {}", step_num, total, e));
+                    }
+                }
+            }
+            "execute_script" => {
+                let script_content = step["script_content"].as_str().unwrap_or("");
+                let script_type = step["script_type"].as_str().unwrap_or("bash");
+                if script_content.is_empty() {
+                    results.push(format!("[{}/{}] execute_script: 脚本内容为空，跳过", step_num, total));
+                    continue;
+                }
+                results.push(format!("[{}/{}] execute_script: 执行 {} 脚本...", step_num, total, script_type));
+                match run_script_internal(script_content, script_type).await {
+                    Ok(output) => results.push(format!("[{}/{}] execute_script: 完成\n{}", step_num, total, output)),
+                    Err(e) => results.push(format!("[{}/{}] execute_script 失败: {}", step_num, total, e)),
+                }
+            }
+            "browser_action" => {
+                let tool = step["tool"].as_str().unwrap_or("browser_navigate");
+                let url = step["url"].as_str().unwrap_or("");
+                let text = step["text"].as_str().unwrap_or("");
+                let selector = step["selector"].as_str().unwrap_or("");
+                
+                match tool {
+                    "browser_navigate" => {
+                        if url.is_empty() {
+                            results.push(format!("[{}/{}] browser_navigate: URL 为空，跳过", step_num, total));
+                            continue;
+                        }
+                        results.push(format!("[{}/{}] browser_navigate: 打开 {}", step_num, total, url));
+                        let open_result = if cfg!(target_os = "windows") {
+                            Command::new("cmd").args(["/C", "start", url]).output()
+                        } else {
+                            Command::new("open").arg(url).output()
+                        };
+                        match open_result {
+                            Ok(_) => results.push(format!("[{}/{}] browser_navigate: 已打开", step_num, total)),
+                            Err(e) => results.push(format!("[{}/{}] browser_navigate 失败: {}", step_num, total, e)),
+                        }
+                        // 等待页面加载
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    }
+                    "browser_type" => {
+                        results.push(format!("[{}/{}] browser_type: 输入 '{}'", step_num, total, text));
+                        #[cfg(target_os = "macos")]
+                        {
+                            let script = format!("tell application \"System Events\" to keystroke \"{}\"", text.replace('"', "\\\""));
+                            let _ = Command::new("osascript").args(["-e", &script]).output();
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            let script = format!("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{}')", text);
+                            let _ = Command::new("powershell").args(["-NoProfile", "-Command", &script]).output();
+                        }
+                    }
+                    "browser_click" => {
+                        let x = step["x"].as_f64().unwrap_or(0.0);
+                        let y = step["y"].as_f64().unwrap_or(0.0);
+                        results.push(format!("[{}/{}] browser_click: 点击 ({}, {})", step_num, total, x, y));
+                        #[cfg(target_os = "macos")]
+                        {
+                            let script = format!(
+                                "tell application \"System Events\" to click at {{{}, {}}}",
+                                x as i32, y as i32
+                            );
+                            let _ = Command::new("osascript").args(["-e", &script]).output();
+                        }
+                    }
+                    _ => {
+                        results.push(format!("[{}/{}] browser_action: 未知工具 '{}'，支持 selector '{}'", step_num, total, tool, selector));
+                    }
+                }
+            }
+            _ => {
+                results.push(format!("[{}/{}] 未知步骤类型: {}，跳过", step_num, total, step_type));
+            }
+        }
+    }
+
+    Ok(results.join("\n"))
+}
+
+// ======== 图片理解 + 视觉API ========
+
+use base64::Engine as _;
+
+#[tauri::command]
+async fn image_analyze(image_path: String, prompt: Option<String>) -> Result<String, String> {
+    let path = std::path::Path::new(&image_path);
+    if !path.exists() {
+        return Err(format!("图片不存在: {}", image_path));
+    }
+    
+    // 读取图片并转为 base64
+    let image_data = fs::read(path).map_err(|e| format!("读取图片失败: {}", e))?;
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
+    
+    // 判断 MIME 类型
+    let ext = path.extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => "image/jpeg",
+    };
+    
+    let user_prompt = prompt.unwrap_or_else(|| "请描述这张图片的内容，用中文回答。".to_string());
+    
+    // 调用 DeepSeek Vision API
+    let api_key = "sk-3d0295d2c9084d8ba7681135c586c505";
+    let body = serde_json::json!({
+        "model": "deepseek-chat",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", mime, base64_data)
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": user_prompt
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1024
+    });
+    
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.deepseek.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(60))
+        .json(&body)
+        .send()
+        .await;
+    
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await
+                .map_err(|e| format!("解析响应失败: {}", e))?;
+            let content = data["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("(无返回内容)")
+                .to_string();
+            Ok(content)
+        }
+        Ok(r) => {
+            // API 不支持视觉或其他错误，返回文件信息作为 fallback
+            let status = r.status();
+            let _text = r.text().await.unwrap_or_default();
+            let file_size = image_data.len();
+            Ok(format!("📷 图片信息\n路径: {}\n格式: {}\n大小: {} KB\n\n⚠️ 视觉API暂不可用 ({}), 可切换到支持视觉的模型", 
+                image_path, ext, file_size / 1024, status))
+        }
+        Err(e) => {
+            let file_size = image_data.len();
+            Ok(format!("📷 图片信息\n路径: {}\n格式: {}\n大小: {} KB\n\n⚠️ 网络错误: {}", 
+                image_path, ext, file_size / 1024, e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn image_generate_caption(image_path: String) -> Result<String, String> {
+    image_analyze(
+        image_path,
+        Some("根据这张图片内容，帮我生成一条适合发朋友圈的文案。要求：简短有品味，可以加上合适的emoji。".to_string())
+    ).await
+}
+
+// ======== 浏览器自动化 commands ========
+
+#[tauri::command]
+async fn browser_navigate(url: String) -> Result<String, String> {
+    if url.is_empty() {
+        return Err("URL 为空".to_string());
+    }
+    let result = if cfg!(target_os = "windows") {
+        Command::new("cmd").args(["/C", "start", &url]).output()
+    } else {
+        Command::new("open").arg(&url).output()
+    };
+    match result {
+        Ok(_) => Ok(format!("已打开: {}", url)),
+        Err(e) => Err(format!("打开失败: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn browser_run_js(script: String) -> Result<String, String> {
+    // 通过 AppleScript / PowerShell 在浏览器中执行 JS
+    #[cfg(target_os = "macos")]
+    {
+        let apple_script = format!(
+            "tell application \"Google Chrome\" to execute front window's active tab javascript \"{}\"",
+            script.replace('"', "\\\"")
+        );
+        let output = Command::new("osascript")
+            .args(["-e", &apple_script])
+            .output()
+            .map_err(|e| format!("osascript 失败: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Ok(stdout);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("当前平台暂不支持浏览器 JS 执行".to_string())
+    }
+}
+
+// ======== 脚本执行引擎 ========
+
+/// 内部脚本执行函数
+async fn run_script_internal(script_content: &str, script_type: &str) -> Result<String, String> {
+    let output = match script_type {
+        "bash" | "sh" | "shell" => {
+            #[cfg(target_os = "windows")]
+            {
+                Command::new("cmd")
+                    .args(["/C", script_content])
+                    .output()
+                    .map_err(|e| format!("cmd 执行失败: {}", e))?
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Command::new("bash")
+                    .args(["-c", script_content])
+                    .output()
+                    .map_err(|e| format!("bash 执行失败: {}", e))?
+            }
+        }
+        "powershell" | "ps1" => {
+            Command::new(if cfg!(target_os = "windows") { "powershell" } else { "pwsh" })
+                .args(["-NoProfile", "-Command", script_content])
+                .output()
+                .map_err(|e| format!("powershell 执行失败: {}", e))?
+        }
+        "applescript" | "osascript" => {
+            #[cfg(target_os = "macos")]
+            {
+                Command::new("osascript")
+                    .args(["-e", script_content])
+                    .output()
+                    .map_err(|e| format!("osascript 执行失败: {}", e))?
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                return Err("当前系统不支持 AppleScript".to_string());
+            }
+        }
+        "python" | "python3" => {
+            Command::new(if cfg!(target_os = "windows") { "python" } else { "python3" })
+                .args(["-c", script_content])
+                .output()
+                .map_err(|e| format!("python 执行失败: {}", e))?
+        }
+        _ => return Err(format!("不支持的脚本类型: {}", script_type)),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(if stdout.is_empty() { "(执行成功，无输出)".to_string() } else { stdout })
+    } else {
+        Err(format!("exit code: {:?}\nstderr: {}", output.status.code(), stderr))
+    }
+}
+
+#[tauri::command]
+async fn execute_script(script_content: String, script_type: String) -> Result<String, String> {
+    run_script_internal(&script_content, &script_type).await
+}
+
+#[tauri::command]
+fn script_auth_check(script_content: String) -> String {
+    openclaw::get_auth_level(&script_content).to_string()
+}
+
+// ======== 文件系统感知 commands ========
+
+#[derive(Serialize, Clone)]
+struct FsEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+    extension: String,
+}
+
+#[tauri::command]
+fn fs_list_dir(dir_path: String) -> Result<Vec<FsEntry>, String> {
+    let path = std::path::Path::new(&dir_path);
+    if !path.exists() {
+        return Err(format!("路径不存在: {}", dir_path));
+    }
+    if !path.is_dir() {
+        return Err(format!("不是目录: {}", dir_path));
+    }
+
+    let mut entries = Vec::new();
+    let read = fs::read_dir(path).map_err(|e| format!("读取目录失败: {}", e))?;
+    for entry in read.flatten() {
+        let meta = entry.metadata().unwrap_or_else(|_| fs::metadata(entry.path()).unwrap());
+        let name = entry.file_name().to_string_lossy().to_string();
+        // 跳过隐藏文件
+        if name.starts_with('.') { continue; }
+        entries.push(FsEntry {
+            name: name.clone(),
+            path: entry.path().to_string_lossy().to_string(),
+            is_dir: meta.is_dir(),
+            size: meta.len(),
+            extension: entry.path().extension()
+                .map(|e| e.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        });
+    }
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+    Ok(entries)
+}
+
+#[tauri::command]
+fn fs_read_text(file_path: String, max_bytes: Option<usize>) -> Result<String, String> {
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+    let meta = fs::metadata(path).map_err(|e| format!("获取文件信息失败: {}", e))?;
+    let limit = max_bytes.unwrap_or(1_048_576); // 默认 1MB
+    if meta.len() as usize > limit {
+        return Err(format!("文件过大: {} bytes (限制 {} bytes)", meta.len(), limit));
+    }
+    fs::read_to_string(path).map_err(|e| format!("读取文件失败: {}", e))
+}
+
+#[tauri::command]
+fn fs_get_desktop_path() -> String {
+    #[cfg(target_os = "windows")]
+    let home = std::env::var("USERPROFILE").unwrap_or_default();
+    #[cfg(not(target_os = "windows"))]
+    let home = std::env::var("HOME").unwrap_or_default();
+    
+    let desktop = PathBuf::from(&home).join("Desktop");
+    desktop.to_string_lossy().to_string()
+}
+
+// ======== OpenClaw 集成 commands ========
+
+#[tauri::command]
+async fn openclaw_status() -> Result<openclaw::OpenClawStatus, String> {
+    Ok(openclaw::get_status().await)
+}
+
+#[tauri::command]
+async fn openclaw_execute(prompt: String) -> Result<openclaw::OpenClawTaskResult, String> {
+    // 先检查授权级别
+    let auth_level = openclaw::get_auth_level(&prompt);
+    if auth_level != "none" {
+        // 返回需要授权的结果，让前端弹窗确认
+        return Ok(openclaw::OpenClawTaskResult {
+            success: false,
+            output: format!("此操作需要用户授权 (级别: {})", auth_level),
+            requires_auth: true,
+            auth_level: auth_level.to_string(),
+            tool_used: String::new(),
+        });
+    }
+    // 读取 gateway token
+    let token = openclaw::read_gateway_token().unwrap_or_default();
+    openclaw::execute_task(&prompt, &token).await
+}
+
+#[tauri::command]
+async fn openclaw_execute_confirmed(prompt: String) -> Result<openclaw::OpenClawTaskResult, String> {
+    // 用户已确认，直接执行
+    let token = openclaw::read_gateway_token().unwrap_or_default();
+    openclaw::execute_task(&prompt, &token).await
+}
+
+#[tauri::command]
+fn openclaw_auth_check(command: String) -> String {
+    openclaw::get_auth_level(&command).to_string()
 }
 
 // ======== 录制引擎 Tauri commands ========
@@ -1068,7 +1582,21 @@ pub fn run() {
             marketplace_publish,
             marketplace_download,
             marketplace_categories,
-            marketplace_delete
+            marketplace_delete,
+            execute_task_chain,
+            openclaw_status,
+            openclaw_execute,
+            openclaw_execute_confirmed,
+            openclaw_auth_check,
+            execute_script,
+            script_auth_check,
+            fs_list_dir,
+            fs_read_text,
+            fs_get_desktop_path,
+            browser_navigate,
+            browser_run_js,
+            image_analyze,
+            image_generate_caption
         ]);
 
     // Windows 系统托盘 + 窗口关闭拦截
@@ -1079,6 +1607,25 @@ pub fn run() {
             tray::TrayIconBuilder,
         };
         builder.setup(|app| {
+            // 启动 WebSocket Server (手机端通信)
+            tokio::spawn(async {
+                ws_server::start_ws_server().await;
+            });
+
+            // 启动 OpenClaw Gateway (后台静默)
+            std::thread::spawn(|| {
+                let mut cmd = Command::new("openclaw");
+                cmd.args(["daemon", "start"])
+                   .stdout(std::process::Stdio::null())
+                   .stderr(std::process::Stdio::null());
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                }
+                let _ = cmd.spawn();
+            });
+
             let show_i = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
@@ -1086,7 +1633,7 @@ pub fn run() {
             let _tray = TrayIconBuilder::new()
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .menu(&menu)
-                .tooltip("自启精灵")
+                .tooltip("任务精灵")
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
                         "show" => {

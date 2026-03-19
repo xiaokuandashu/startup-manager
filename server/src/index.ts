@@ -10,6 +10,7 @@ import activationRoutes from './routes/activation';
 import adminRoutes from './routes/admin';
 import marketplaceRoutes from './routes/marketplace';
 import creditsRoutes from './routes/credits';
+import devicesRoutes from './routes/devices';
 
 const app = express();
 const PORT = 3001;
@@ -48,6 +49,9 @@ app.use(express.static(adminDistPath));
 app.get('/admin/*', (_req, res) => {
   res.sendFile(path.join(adminDistPath, 'index.html'));
 });
+
+// API 路由 — 设备注册
+app.use('/api/devices', devicesRoutes);
 
 // 公开路由
 app.use('/api/auth', authRoutes);

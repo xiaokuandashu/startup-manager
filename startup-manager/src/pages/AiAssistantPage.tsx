@@ -20,6 +20,7 @@ interface AiResponse {
   message: string;
   response_type: string;
   tasks: AiTaskResult[];
+  execute_command?: string;
 }
 
 interface ChatMessage {
@@ -504,6 +505,26 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             tasks: [],
           };
         }
+
+      // 能力三：本地执行 — 当 AI 返回 execute 类型时,运行本地命令
+      if (response.response_type === 'execute' && response.execute_command) {
+        const execCmd = response.execute_command;
+        setMessages(prev => prev.map(m =>
+          m.id === loadingId ? { ...m, content: `⚙️ 正在执行: \`${execCmd}\`...` } : m
+        ));
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const execResult = await invoke<string>('execute_script', {
+            scriptContent: execCmd,
+            scriptType: navigator.platform.includes('Mac') ? 'bash' : 'powershell'
+          });
+          response.message = `✅ 执行完成\n\n\`\`\`\n$ ${execCmd}\n${execResult}\`\`\``;
+          response.response_type = 'info';
+        } catch (execErr) {
+          response.message = `❌ 执行失败: ${execErr}\n\n命令: \`${execCmd}\``;
+          response.response_type = 'error';
+        }
+      }
 
       const aiMsg: ChatMessage = {
         id: loadingId,

@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../models/device.dart';
 import '../models/message.dart';
 import '../services/ws_service.dart';
 import 'auth_provider.dart';
 
-/// WebSocket 服务 Provider (单例)
+/// WebSocket 服务 Provider (单例，用于 AI 指令中转)
 final wsServiceProvider = Provider<WsService>((ref) {
   final ws = WsService();
   ref.onDispose(() => ws.dispose());
@@ -15,7 +17,7 @@ final wsServiceProvider = Provider<WsService>((ref) {
 /// WS 连接状态
 final wsConnectedProvider = StateProvider<bool>((ref) => false);
 
-/// 设备列表 Provider
+/// 设备列表 Provider — 从服务器 API 获取真实数据
 final deviceListProvider = StateNotifierProvider<DeviceListNotifier, List<Device>>((ref) {
   return DeviceListNotifier(ref);
 });
@@ -25,197 +27,88 @@ final selectedDeviceProvider = StateProvider<String?>((ref) => null);
 
 class DeviceListNotifier extends StateNotifier<List<Device>> {
   final Ref _ref;
-  Timer? _reconnectTimer;
-  Timer? _heartbeatPollTimer;
+  Timer? _pollTimer;
+
+  static const _serverUrl = 'https://bt.aacc.fun:8888/api/devices';
 
   DeviceListNotifier(this._ref) : super([]) {
-    _listenWs();
     _listenAuth();
   }
 
-  /// 监听认证状态 → 登录后自动连接 WS
+  /// 监听认证状态 → 登录后自动拉取设备列表
   void _listenAuth() {
     _ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.isLoggedIn && !(previous?.isLoggedIn ?? false)) {
-        // 登录成功，尝试连接
-        _autoConnect();
+        // 登录成功，开始拉取
+        _startPolling();
       } else if (!next.isLoggedIn) {
-        // 退出登录，断开
-        final ws = _ref.read(wsServiceProvider);
-        ws.disconnect();
-        _ref.read(wsConnectedProvider.notifier).state = false;
-        _reconnectTimer?.cancel();
-        _heartbeatPollTimer?.cancel();
+        // 退出登录
+        _pollTimer?.cancel();
         state = [];
       }
     });
 
-    // 如果已经登录，立即尝试连接
+    // 如果已经登录，立即拉取
     final auth = _ref.read(authProvider);
     if (auth.isLoggedIn) {
-      _autoConnect();
+      _startPolling();
     }
   }
 
-  /// 自动连接 WS（先尝试局域网，再尝试云端中继）
-  Future<void> _autoConnect() async {
-    final ws = _ref.read(wsServiceProvider);
+  /// 启动轮询：立即拉取 + 每15秒刷新
+  void _startPolling() {
+    _fetchDevices();
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _fetchDevices();
+    });
+  }
 
-    // 尝试常见局域网 IP
-    final localIps = ['192.168.1.100', '192.168.0.100', '192.168.1.101', '10.0.0.100'];
+  /// 从服务器 API 拉取设备列表
+  Future<void> _fetchDevices() async {
+    final token = _ref.read(authProvider).token;
+    if (token == null || token.isEmpty) return;
 
-    for (final ip in localIps) {
-      try {
-        final success = await ws.connectDirect(ip).timeout(
-          const Duration(seconds: 2),
-          onTimeout: () => false,
-        );
-        if (success) {
-          print('[WS] 局域网连接成功: $ip');
-          _ref.read(wsConnectedProvider.notifier).state = true;
-          _startHeartbeatPolling();
-          return;
-        }
-      } catch (_) {}
-    }
-
-    // 局域网失败后，尝试云端中继
     try {
-      final success = await ws.connectDirect('bt.aacc.fun', port: 19527).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => false,
-      );
-      if (success) {
-        print('[WS] 云端中继连接成功');
-        _ref.read(wsConnectedProvider.notifier).state = true;
-        _startHeartbeatPolling();
-        return;
-      }
-    } catch (_) {}
+      final resp = await http.get(
+        Uri.parse(_serverUrl),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
 
-    print('[WS] 所有连接失败，将在 30 秒后重试');
-    _ref.read(wsConnectedProvider.notifier).state = false;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final devicesList = data['devices'] as List? ?? [];
 
-    // 设置退避重连
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 30), () => _autoConnect());
-  }
+        final devices = devicesList.map<Device>((d) {
+          final map = d as Map<String, dynamic>;
+          return Device(
+            id: map['device_id']?.toString() ?? '',
+            name: map['name']?.toString() ?? '',
+            hostname: map['hostname']?.toString() ?? '',
+            platform: map['platform']?.toString() ?? 'unknown',
+            osVersion: map['os_version']?.toString() ?? '',
+            online: (map['online'] ?? 0) == 1,
+            commMode: (map['online'] ?? 0) == 1 ? CommMode.wifi : CommMode.offline,
+            cpu: (map['cpu'] ?? 0).toDouble(),
+            cpuTemp: (map['cpu_temp'] ?? 0).toDouble(),
+            memory: (map['memory'] ?? 0).toDouble(),
+            memoryUsed: (map['memory_used'] ?? 0).toDouble(),
+            memoryTotal: (map['memory_total'] ?? 0).toDouble(),
+            disk: (map['disk'] ?? 0).toDouble(),
+            diskUsed: (map['disk_used'] ?? 0).toDouble(),
+            diskTotal: (map['disk_total'] ?? 0).toDouble(),
+            tasksRunning: (map['tasks_running'] ?? 0) as int,
+          );
+        }).toList();
 
-  /// 定期发送心跳获取设备数据
-  void _startHeartbeatPolling() {
-    _heartbeatPollTimer?.cancel();
-    _heartbeatPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      final ws = _ref.read(wsServiceProvider);
-      if (ws.isConnected) {
-        ws.send(WsMessage(type: 'ping'));
+        state = devices;
+        print('[devices] 从服务器获取 ${devices.length} 台设备');
       } else {
-        _ref.read(wsConnectedProvider.notifier).state = false;
-        _heartbeatPollTimer?.cancel();
-        // 尝试重连
-        _reconnectTimer?.cancel();
-        _reconnectTimer = Timer(const Duration(seconds: 5), () => _autoConnect());
+        print('[devices] API 错误: ${resp.statusCode}');
       }
-    });
-  }
-
-  void _listenWs() {
-    final ws = _ref.read(wsServiceProvider);
-    ws.messages.listen((msg) {
-      switch (msg.type) {
-        case 'connected':
-          // 电脑发来的欢迎消息，包含平台信息
-          _handleConnected(msg.data);
-          break;
-        case 'heartbeat':
-          _handleHeartbeat(msg.data);
-          break;
-        case 'device_list':
-          _handleDeviceList(msg.data);
-          break;
-      }
-    });
-  }
-
-  void _handleConnected(Map<String, dynamic> data) {
-    final platform = data['platform'] as String? ?? 'unknown';
-    final version = data['version'] as String? ?? '';
-    print('[WS] 电脑已连接: $platform v$version');
-
-    // 创建当前连接的设备
-    final device = Device(
-      id: 'connected_pc',
-      name: _ref.read(authProvider).email ?? '我的电脑',
-      platform: platform == 'macos' ? 'macos' : 'windows',
-      online: true,
-      commMode: CommMode.wifi,
-      cpu: 0,
-      memory: 0,
-    );
-
-    // 检查是否已存在
-    final existing = state.indexWhere((d) => d.id == 'connected_pc');
-    if (existing >= 0) {
-      state = [...state]..[existing] = device;
-    } else {
-      state = [...state, device];
+    } catch (e) {
+      print('[devices] 网络错误: $e');
     }
-  }
-
-  void _handleHeartbeat(Map<String, dynamic> data) {
-    final deviceId = data['device_id'] as String? ?? 'connected_pc';
-    final deviceName = data['device_name'] as String? ?? '我的电脑';
-    final cpu = (data['cpu'] ?? 0).toDouble();
-    final cpuTemp = (data['cpu_temp'] ?? 0).toDouble();
-    final memory = (data['memory'] ?? 0).toDouble();
-    final memoryUsed = (data['memory_used'] ?? 0).toDouble();
-    final memoryTotal = (data['memory_total'] ?? 0).toDouble();
-    final disk = (data['disk'] ?? 0).toDouble();
-    final diskUsed = (data['disk_used'] ?? 0).toDouble();
-    final diskTotal = (data['disk_total'] ?? 0).toDouble();
-    final tasksRunning = data['tasks_running'] as int? ?? 0;
-    final hostname = data['hostname'] as String? ?? '';
-    final osVersion = data['os_version'] as String? ?? '';
-
-    final index = state.indexWhere((d) => d.id == deviceId);
-    if (index >= 0) {
-      final updated = state[index].copyWith(
-        name: deviceName.isNotEmpty ? deviceName : null,
-        hostname: hostname.isNotEmpty ? hostname : null,
-        osVersion: osVersion.isNotEmpty ? osVersion : null,
-        online: true,
-        cpu: cpu,
-        cpuTemp: cpuTemp,
-        memory: memory,
-        memoryUsed: memoryUsed,
-        memoryTotal: memoryTotal,
-        disk: disk,
-        diskUsed: diskUsed,
-        diskTotal: diskTotal,
-        tasksRunning: tasksRunning,
-      );
-      state = [...state]..[index] = updated;
-    } else {
-      // 新设备
-      state = [...state, Device(
-        id: deviceId,
-        name: deviceName,
-        hostname: hostname,
-        osVersion: osVersion,
-        platform: 'unknown',
-        online: true,
-        commMode: CommMode.wifi,
-        cpu: cpu,
-        memory: memory,
-        tasksRunning: tasksRunning,
-      )];
-    }
-  }
-
-  void _handleDeviceList(Map<String, dynamic> data) {
-    final devices = (data['devices'] as List?)
-        ?.map((d) => Device.fromJson(d))
-        .toList() ?? [];
-    state = devices;
   }
 
   void addDevice(Device device) {
@@ -226,17 +119,9 @@ class DeviceListNotifier extends StateNotifier<List<Device>> {
     state = state.where((d) => d.id != deviceId).toList();
   }
 
-  void setDeviceOffline(String deviceId) {
-    final index = state.indexWhere((d) => d.id == deviceId);
-    if (index >= 0) {
-      state = [...state]..[index] = state[index].copyWith(online: false, commMode: CommMode.offline);
-    }
-  }
-
   @override
   void dispose() {
-    _reconnectTimer?.cancel();
-    _heartbeatPollTimer?.cancel();
+    _pollTimer?.cancel();
     super.dispose();
   }
 }

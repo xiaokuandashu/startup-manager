@@ -151,6 +151,8 @@ const App: React.FC = () => {
     setToken(authToken);
     localStorage.setItem('user', JSON.stringify(userInfo));
     localStorage.setItem('token', authToken);
+    // 启动设备心跳上报
+    startHeartbeat(authToken);
   };
 
   const handleLogout = () => {
@@ -159,6 +161,26 @@ const App: React.FC = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
   };
+
+  // 启动设备心跳上报
+  const startHeartbeat = async (authToken: string) => {
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('start_device_heartbeat', { token: authToken });
+        console.log('[heartbeat] 设备心跳已启动');
+      }
+    } catch (e) {
+      console.error('[heartbeat] 启动失败:', e);
+    }
+  };
+
+  // 应用启动 + 已有 token 时自动启动心跳
+  useEffect(() => {
+    if (token) {
+      startHeartbeat(token);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkVipBeforeAdd = (): boolean => {
     if (!user) {

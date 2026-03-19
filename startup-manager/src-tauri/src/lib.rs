@@ -598,20 +598,16 @@ fn ai_parse_intent(input: String) -> ai_engine::AiResponse {
 #[tauri::command]
 async fn ai_cloud_parse(input: String) -> Result<String, String> {
     let api_key = "sk-3d0295d2c9084d8ba7681135c586c505";
-    let system_prompt = r#"你是「任务精灵」AI全能助手。你有两种能力：
+    let system_prompt = r#"你是「任务精灵」AI全能助手。你有三种能力：
 
-## 能力一：自由对话（最重要）
-当用户问问题、闲聊、求助、查询信息时，直接用自然语言回答。输出JSON格式：
+## 能力一：自由对话
+当用户问问题、闲聊、求助时，直接用自然语言回答。输出JSON格式：
 {"message":"你的回答内容","response_type":"info","tasks":[]}
 
-你可以回答任何问题，包括但不限于：
-- 电脑配置、系统信息、软件使用方法
-- 编程问题、技术咨询
-- 日常闲聊、问候
-- 使用帮助和建议
-
 ## 能力二：创建自动化任务
-只有当用户**明确要求创建定时任务、自动化操作**时（包含"每天"/"定时"/"打开XX"/"启动"/"执行"等关键词），才创建任务。
+只有当用户**明确要求创建定时任务、自动化操作**时，才创建任务。
+输出JSON格式：
+{"message":"确认消息","response_type":"task_created","tasks":[...]}
 
 ### 任务类型
 1. 简单任务: task_type 为 "application" 或 "script"
@@ -628,23 +624,40 @@ async fn ai_cloud_parse(input: String) -> Result<String, String> {
 macOS: /Applications/WeChat.app, /Applications/Google Chrome.app, /Applications/DingTalk.app, /Applications/Feishu.app
 Windows: C:\Program Files\Tencent\WeChat\WeChat.exe, C:\Program Files\Google\Chrome\Application\chrome.exe
 
+## 能力三：本地执行（通过 OpenClaw）
+当用户要求**立即执行**本地操作时，如查看系统信息、创建文件夹、打开应用、执行命令等，使用 OpenClaw 执行。
+输出JSON格式：
+{"message":"正在执行...","response_type":"execute","execute_command":"要执行的shell命令","tasks":[]}
+
+可执行的操作包括但不限于：
+- 查看电脑配置/系统信息：execute_command 为 "system_profiler SPHardwareDataType"(macOS) 或 "systeminfo"(Windows)
+- 查看CPU信息：execute_command 为 "sysctl -n machdep.cpu.brand_string"(macOS) 或 "wmic cpu get name"(Windows)
+- 查看内存：execute_command 为 "sysctl hw.memsize"(macOS) 或 "wmic memorychip get capacity"(Windows)
+- 查看硬盘：execute_command 为 "df -h"(macOS) 或 "wmic diskdrive get size,model"(Windows)
+- 创建文件夹：execute_command 为 "mkdir -p 路径"(macOS) 或 "mkdir 路径"(Windows)
+- 打开文件/应用：execute_command 为 "open 路径"(macOS) 或 "start 路径"(Windows)
+- 查看进程：execute_command 为 "ps aux | head -20"(macOS) 或 "tasklist"(Windows)
+- 查看网络：execute_command 为 "ifconfig"(macOS) 或 "ipconfig"(Windows)
+- 所有终端命令
+
 ## 判断规则（非常重要）
-- 用户问问题 → response_type:"info"，message里写详细回答，tasks为空
-- 用户要求创建任务 → response_type:"task_created"，message写确认，tasks里放任务
-- 不确定时 → 当做问问题处理，友好回答
+- 用户问问题/闲聊 → response_type:"info"
+- 用户要创建定时任务 → response_type:"task_created"
+- 用户要查看系统信息/执行命令/创建文件/打开东西/本地操作 → response_type:"execute"
+- 不确定时 → 当做问题回答 (info)
 
 ## 示例
 输入: 我电脑什么配置
-输出: {"message":"抱歉，我目前无法直接查看您的电脑硬件配置。您可以通过以下方式查看：\n\nmacOS: 点击左上角  → 关于本机\nWindows: 右键此电脑 → 属性\n\n如果您需要我帮您自动执行查看命令，可以说：执行命令查看系统信息","response_type":"info","tasks":[]}
+输出: {"message":"正在查看您的电脑配置...","response_type":"execute","execute_command":"system_profiler SPHardwareDataType","tasks":[]}
+
+输入: 帮我在桌面创建一个文件夹叫test
+输出: {"message":"正在在桌面创建 test 文件夹...","response_type":"execute","execute_command":"mkdir -p ~/Desktop/test","tasks":[]}
 
 输入: 你好
-输出: {"message":"你好！👋 我是任务精灵AI助手。\n\n我可以帮你：\n• 🤖 创建自动化任务（如：每天9点打开微信）\n• 💬 回答各种问题\n• 🔧 提供技术支持\n\n有什么我能帮到你的吗？","response_type":"info","tasks":[]}
+输出: {"message":"你好！👋 我是任务精灵AI助手。\n\n我可以帮你：\n• 🤖 创建自动化任务（如：每天9点打开微信）\n• 🔧 执行本地操作（如：查看系统配置、创建文件夹）\n• 💬 回答各种问题\n\n有什么我能帮到你的吗？","response_type":"info","tasks":[]}
 
 输入: 每天9点打开微信
 输出: {"message":"已创建每天打开微信的任务","response_type":"task_created","tasks":[{"task_name":"每天打开微信","task_type":"application","path":"/Applications/WeChat.app","schedule_type":"daily","schedule_time":"09:00","schedule_days":[],"enabled":true,"confidence":0.95}]}
-
-输入: 先打开微信，等5分钟，再执行录制动作 打卡
-输出: {"message":"已创建链式任务","response_type":"task_created","tasks":[{"task_name":"微信自动打卡","task_type":"chain","path":"","schedule_type":"daily","schedule_time":"08:20","schedule_days":[],"enabled":true,"confidence":0.9,"steps":[{"order":1,"type":"open_app","app_path":"/Applications/WeChat.app"},{"order":2,"type":"wait","wait_minutes":5},{"order":3,"type":"playback_recording","recording_name":"打卡"}]}]}
 
 严格输出JSON格式，不要输出任何JSON以外的内容。"#;
 
@@ -1596,8 +1609,103 @@ pub fn run() {
             browser_navigate,
             browser_run_js,
             image_analyze,
-            image_generate_caption
+            image_generate_caption,
+            start_device_heartbeat
         ]);
+
+/// 设备心跳上报 — 前端登录后调用，每30秒上报系统信息到服务器
+#[tauri::command]
+async fn start_device_heartbeat(token: String) -> Result<String, String> {
+    tokio::spawn(async move {
+        device_heartbeat_loop(&token).await;
+    });
+    Ok("heartbeat started".to_string())
+}
+
+async fn device_heartbeat_loop(token: &str) {
+    use sysinfo::{System, Disks};
+
+    let client = reqwest::Client::new();
+    let server_url = "https://bt.aacc.fun:8888/api/devices/heartbeat";
+
+    loop {
+        // 采集系统信息
+        let mut sys = System::new();
+        sys.refresh_cpu_usage();
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        sys.refresh_cpu_usage();
+        sys.refresh_memory();
+
+        let cpu: f64 = sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum::<f64>()
+            / sys.cpus().len().max(1) as f64;
+        let cpu = (cpu * 10.0).round() / 10.0;
+
+        let total_mem = sys.total_memory() as f64;
+        let used_mem = sys.used_memory() as f64;
+        let memory_pct = if total_mem > 0.0 { (used_mem / total_mem * 100.0 * 10.0).round() / 10.0 } else { 0.0 };
+        let memory_used_gb = (used_mem / 1_073_741_824.0 * 10.0).round() / 10.0;
+        let memory_total_gb = (total_mem / 1_073_741_824.0 * 10.0).round() / 10.0;
+
+        let disks = Disks::new_with_refreshed_list();
+        let mut total_disk: u64 = 0;
+        let mut avail_disk: u64 = 0;
+        for disk in disks.list() {
+            total_disk += disk.total_space();
+            avail_disk += disk.available_space();
+        }
+        let used_disk = total_disk.saturating_sub(avail_disk);
+        let disk_pct = if total_disk > 0 { (used_disk as f64 / total_disk as f64 * 100.0).round() } else { 0.0 };
+        let disk_used_gb = (used_disk as f64 / 1_073_741_824.0).round();
+        let disk_total_gb = (total_disk as f64 / 1_073_741_824.0).round();
+
+        let hostname = System::host_name().unwrap_or_else(|| "unknown".to_string());
+        let os_name = System::name().unwrap_or_default();
+        let os_ver = System::os_version().unwrap_or_default();
+        let os_version = format!("{} {}", os_name, os_ver).trim().to_string();
+
+        let platform = if cfg!(target_os = "macos") { "macos" }
+            else if cfg!(target_os = "windows") { "windows" }
+            else { "linux" };
+
+        let body = serde_json::json!({
+            "device_id": hostname,
+            "name": hostname,
+            "platform": platform,
+            "hostname": hostname,
+            "os_version": os_version,
+            "cpu": cpu,
+            "cpu_temp": 0,
+            "memory": memory_pct,
+            "memory_used": memory_used_gb,
+            "memory_total": memory_total_gb,
+            "disk": disk_pct,
+            "disk_used": disk_used_gb,
+            "disk_total": disk_total_gb,
+            "tasks_running": 0
+        });
+
+        let result = client.post(server_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    eprintln!("[heartbeat] 上报失败: {}", resp.status());
+                }
+            }
+            Err(e) => {
+                eprintln!("[heartbeat] 网络错误: {}", e);
+            }
+        }
+
+        // 每30秒上报一次
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+    }
+}
 
     // Windows 系统托盘 + 窗口关闭拦截
     #[cfg(target_os = "windows")]
@@ -1610,6 +1718,12 @@ pub fn run() {
             // 启动 WebSocket Server (手机端通信)
             tokio::spawn(async {
                 ws_server::start_ws_server().await;
+            });
+
+            // 启动设备心跳上报（每30秒 POST 到服务器）
+            let app_handle = app.handle().clone();
+            tokio::spawn(async move {
+                start_device_heartbeat(app_handle).await;
             });
 
             // 启动 OpenClaw Gateway (后台静默)

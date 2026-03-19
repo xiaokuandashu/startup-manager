@@ -226,6 +226,33 @@ export function initDB() {
   // marketplace_tasks 新增 platform 字段
   try { db.exec("ALTER TABLE marketplace_tasks ADD COLUMN platform TEXT DEFAULT 'all'"); } catch {}
 
+  // ======== 设备注册表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      name TEXT DEFAULT '',
+      platform TEXT DEFAULT '',
+      hostname TEXT DEFAULT '',
+      os_version TEXT DEFAULT '',
+      ip TEXT DEFAULT '',
+      cpu REAL DEFAULT 0,
+      cpu_temp REAL DEFAULT 0,
+      memory REAL DEFAULT 0,
+      memory_used REAL DEFAULT 0,
+      memory_total REAL DEFAULT 0,
+      disk REAL DEFAULT 0,
+      disk_used REAL DEFAULT 0,
+      disk_total REAL DEFAULT 0,
+      tasks_running INTEGER DEFAULT 0,
+      online INTEGER DEFAULT 1,
+      last_seen TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, device_id)
+    )
+  `);
+
   // 初始化默认管理员
   const adminExists = db.prepare('SELECT id FROM admin WHERE username = ?').get('admin');
   if (!adminExists) {

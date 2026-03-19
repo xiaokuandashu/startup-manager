@@ -50,6 +50,7 @@ const CRITICAL_SENSITIVE: &[&str] = &[
 
 /// 检测 OpenClaw 是否已安装
 pub fn check_installed() -> bool {
+    #[cfg(not(target_os = "windows"))]
     let output = std::process::Command::new("which")
         .arg("openclaw")
         .output();

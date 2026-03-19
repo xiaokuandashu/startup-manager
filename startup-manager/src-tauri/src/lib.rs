@@ -997,13 +997,13 @@ async fn browser_navigate(url: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn browser_run_js(script: String) -> Result<String, String> {
+async fn browser_run_js(_script: String) -> Result<String, String> {
     // 通过 AppleScript / PowerShell 在浏览器中执行 JS
     #[cfg(target_os = "macos")]
     {
         let apple_script = format!(
             "tell application \"Google Chrome\" to execute front window's active tab javascript \"{}\"",
-            script.replace('"', "\\\"")
+            _script.replace('"', "\\\"")
         );
         let output = Command::new("osascript")
             .args(["-e", &apple_script])

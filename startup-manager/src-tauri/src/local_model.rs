@@ -187,8 +187,8 @@ fn model_paths() -> Vec<(&'static str, ModelPath)> {
             filename: "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         }),
         ("nanbeige-3b", ModelPath {
-            repo: "bartowski/nanbeige4.1-3b-GGUF",
-            filename: "nanbeige4.1-3b-Q4_K_M.gguf",
+            repo: "mradermacher/Nanbeige4.1-3B-GGUF",
+            filename: "Nanbeige4.1-3B.Q4_K_M.gguf",
         }),
         ("phi4-mini", ModelPath {
             repo: "bartowski/microsoft_Phi-4-mini-instruct-GGUF",
@@ -371,10 +371,10 @@ fn available_models() -> Vec<LocalModel> {
             name: "🧠 Nanbeige 4.1 3B".into(),
             size: "2.0GB".into(),
             description: "深度多步推理，3B最强思考模型".into(),
-            installed: is_model_valid(&format!("{}/nanbeige4.1-3b-Q4_K_M.gguf", mdir)),
+            installed: is_model_valid(&format!("{}/Nanbeige4.1-3B.Q4_K_M.gguf", mdir)),
             downloading: false,
             download_url: build_download_url("nanbeige-3b"),
-            filename: "nanbeige4.1-3b-Q4_K_M.gguf".into(),
+            filename: "Nanbeige4.1-3B.Q4_K_M.gguf".into(),
         },
         LocalModel {
             id: "phi4-mini".into(),
@@ -958,13 +958,23 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
 
 严格输出JSON。"#;
 
-    let prompt = format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, user_input);
+    let active_model = ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default();
+
+    // Chat template: Phi-4 vs ChatML (DeepSeek-R1 / Nanbeige)
+    let is_phi = active_model.contains("phi4");
+    let prompt = if is_phi {
+        format!("<|system|>\n{}<|end|>\n<|user|>\n{}<|end|>\n<|assistant|>\n", system_prompt, user_input)
+    } else {
+        format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, user_input)
+    };
+
+    let stop_token = if is_phi { "<|end|>" } else { "<|im_end|>" };
 
     let body = serde_json::json!({
         "prompt": prompt,
-        "n_predict": 1024,
-        "temperature": 0.1,
-        "stop": ["<|im_end|>"],
+        "n_predict": 2048,
+        "temperature": 0.3,
+        "stop": [stop_token],
         "stream": false,
     });
 

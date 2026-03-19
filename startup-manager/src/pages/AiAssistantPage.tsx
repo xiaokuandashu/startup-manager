@@ -705,7 +705,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           >
             <Terminal size={12} />
             本地执行
-            {localExecEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginLeft: 2 }} />}
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: localExecEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
           </button>
           <button
             onClick={() => setWebSearchEnabled(!webSearchEnabled)}
@@ -721,7 +721,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           >
             <Globe size={12} />
             联网搜索
-            {webSearchEnabled && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginLeft: 2 }} />}
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: webSearchEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
           </button>
         </div>
       </div>

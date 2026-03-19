@@ -373,42 +373,51 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         }
       }
 
-      // ========== 步骤1: 联网搜索（注入真实时间 + DeepSeek 摘要）==========
-      if (webSearchEnabled && !response) {
-        setMessages(prev => prev.map(m =>
-          m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
-        ));
-        // 注入当前真实时间
-        const now = new Date();
-        const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
-        const timeStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]} ${now.toLocaleTimeString('zh-CN')}`;
+      // ========== 步骤1: 联网搜索（注入真实时间）==========
+      const now = new Date();
+      const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+      const timeStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]} ${now.toLocaleTimeString('zh-CN')}`;
 
-        try {
-          const token = localStorage.getItem('token');
-          const searchRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              messages: [
-                { role: 'system', content: `你是智能助手。当前确切时间是: ${timeStr}。根据用户问题回答，必须使用以上真实时间。回答控制在200字内。` },
-                { role: 'user', content: text }
-              ]
-            }),
-          });
-          if (searchRes.ok) {
-            const searchData = await searchRes.json();
-            const summary = searchData.choices?.[0]?.message?.content || '';
-            if (summary) {
-              aiInput = `[实时信息]
+      if (webSearchEnabled && !response) {
+        // 如果是 DeepSeek 云端，不做单独搜索调用（避免消耗 2 次），直接注入时间到主调用
+        if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
+          aiInput = `[当前时间: ${timeStr}]
+
+${text}
+
+请根据以上真实时间回答。`;
+        } else {
+          // 本地模型: 用 DeepSeek 搜索一次获取信息
+          setMessages(prev => prev.map(m =>
+            m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
+          ));
+          try {
+            const token = localStorage.getItem('token');
+            const searchRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                messages: [
+                  { role: 'system', content: `你是智能助手。当前确切时间是: ${timeStr}。根据用户问题回答，必须使用以上真实时间。回答控制在200字内。` },
+                  { role: 'user', content: text }
+                ]
+              }),
+            });
+            if (searchRes.ok) {
+              const searchData = await searchRes.json();
+              const summary = searchData.choices?.[0]?.message?.content || '';
+              if (summary) {
+                aiInput = `[实时信息]
 当前时间: ${timeStr}
 搜索结果: ${summary}
 
 [用户问题] ${text}
 
 请结合以上信息回答用户。时间信息以上面的“当前时间”为准。`;
+              }
             }
-          }
-        } catch { /* search failed, use original */ }
+          } catch { /* search failed, use original */ }
+        }
       }
 
       // ========== 步骤2: AI 大脑推理（仅在未被预检测拦截时）==========
@@ -428,7 +437,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({
                 model: activeModel,
-                messages: [{ role: 'user', content: aiInput }],
+                messages: [
+                  { role: 'system', content: `你是「任务精灵」AI助手，不是DeepSeek，不是其他任何模型。当用户问你是谁时，回答“我是任务精灵AI助手”。当前时间: ${timeStr}。` },
+                  { role: 'user', content: aiInput }
+                ],
               }),
             });
             if (proxyRes.status === 429) {

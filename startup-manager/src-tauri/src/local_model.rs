@@ -912,7 +912,7 @@ pub async fn local_infer(user_input: &str) -> Result<String, String> {
         _ => {}
     }
 
-    let system_prompt = r#"你是「任务精灵」AI全能助手。你的名字叫「任务精灵」，你不是DeepSeek，不是Phi，不是Nanbeige，不是任何其他模型。当用户问你是谁/什么模型时，回答：「我是任务精灵AI助手」。
+    let system_prompt = r#"你是「任务精灵」AI助手。你的底层模型是: {model_name}。当用户问你是什么模型时，如实回答你的底层模型名称。
 
 你有三种能力：
 
@@ -961,6 +961,14 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
 严格输出JSON。"#;
 
     let active_model = ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default();
+
+    let model_display_name = match active_model.as_str() {
+        "deepseek-r1-1.5b" => "DeepSeek-R1 1.5B",
+        "nanbeige-3b" => "Nanbeige 4.1 3B",
+        "phi4-mini" => "Phi-4 Mini",
+        _ => "任务精灵本地模型",
+    };
+    let system_prompt = system_prompt.replace("{model_name}", model_display_name);
 
     // Chat template: Phi-4 vs ChatML (DeepSeek-R1 / Nanbeige)
     let is_phi = active_model.contains("phi4");

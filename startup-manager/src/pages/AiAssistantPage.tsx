@@ -29,6 +29,7 @@ interface ChatMessage {
   content: string;
   tasks?: AiTaskResult[];
   responseType?: string;
+  executedCommand?: string; // 记录执行过的命令，用于"存为任务"
   loading?: boolean;
   timestamp: number;
 }
@@ -176,6 +177,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [openclawStatus, setOpenclawStatus] = useState<{installed: boolean; running: boolean; version: string}>({installed: false, running: false, version: ''});
   const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [localExecEnabled, setLocalExecEnabled] = useState(true); // OpenClaw/本地执行 默认开启
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -332,11 +334,12 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       let response: AiResponse;
       let aiInput = text;
+      let executedCommand = '';
 
-      // 联网搜索：先获取搜索结果作为上下文
+      // ========== 步骤1: 联网搜索（用 DeepSeek 做摘要，对所有模型通用）==========
       if (webSearchEnabled) {
         setMessages(prev => prev.map(m =>
-          m.id === loadingId ? { ...m, content: '🔍 联网搜索中...' } : m
+          m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
         ));
         try {
           const token = localStorage.getItem('token');
@@ -345,49 +348,30 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({
               messages: [
-                { role: 'system', content: '你是一个搜索助手。根据用户的问题，生成5个相关的搜索关键词，用逗号分隔，只输出关键词。' },
+                { role: 'system', content: '你是联网搜索助手。根据用户问题，直接给出准确、简洁的实时信息回答。如果涉及天气、新闻、价格等实时数据，请给出当前最新信息。回答控制在200字内。' },
                 { role: 'user', content: text }
               ]
             }),
           });
           if (searchRes.ok) {
             const searchData = await searchRes.json();
-            const keywords = searchData.choices?.[0]?.message?.content || '';
-            aiInput = `[联网搜索上下文] 用户问题: ${text}\n搜索关键词: ${keywords}\n请结合网络信息回答用户问题。`;
+            const summary = searchData.choices?.[0]?.message?.content || '';
+            if (summary) {
+              aiInput = `[联网搜索结果]\n${summary}\n\n[用户原始问题] ${text}\n\n请结合以上搜索结果回答用户。`;
+            }
           }
-        } catch { /* search failed, continue with original */ }
+        } catch { /* search failed, use original */ }
       }
 
+      // ========== 步骤2: AI 大脑推理 ==========
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
 
-        // 根据选择的模型路由
-        if (activeModel === 'rule_engine') {
-          // 本地规则引擎
-          response = await invoke<AiResponse>('ai_parse_intent', { input: aiInput });
-
-          if (response.response_type === 'cloud_needed') {
-            setMessages(prev => prev.map(m =>
-              m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端 AI...' } : m
-            ));
-            try {
-              const cloudResult = await invoke<string>('ai_cloud_parse', { input: aiInput });
-              const cleanJson = cloudResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              const parsed = safeParseJSON(cleanJson);
-              if (parsed && (parsed as any).message) {
-                response = parsed as unknown as AiResponse;
-              } else {
-                response = { message: cleanJson || cloudResult, response_type: 'info', tasks: [] };
-              }
-            } catch {
-              response.message = '🤔 AI 云端暂时不可用，请试试更简单的表达方式。';
-              response.response_type = 'info';
-            }
-          }
-        } else if (activeModel === 'deepseek_cloud') {
-          // DeepSeek 云端（通过服务端代理 API）
+        if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
+          // DeepSeek 云端
+          const modelLabel = activeModel === 'deepseek_user' ? '🔑 您的密钥' : '☁️ DeepSeek 云端';
           setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🌐 正在联系 DeepSeek 云端...' } : m
+            m.id === loadingId ? { ...m, content: `${modelLabel} 思考中...` } : m
           ));
           try {
             const token = localStorage.getItem('token');
@@ -395,14 +379,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({
-                model: 'deepseek_cloud',
-                messages: [{ role: 'user', content: text }],
+                model: activeModel,
+                messages: [{ role: 'user', content: aiInput }],
               }),
             });
             if (proxyRes.status === 429) {
-              const errData = await proxyRes.json();
-              response = { message: `⚠️ ${errData.error}`, response_type: 'error', tasks: [] };
-            } else if (proxyRes.status === 503) {
               const errData = await proxyRes.json();
               response = { message: `⚠️ ${errData.error}`, response_type: 'error', tasks: [] };
             } else if (proxyRes.status === 401) {
@@ -417,52 +398,21 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               } else {
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
-              // 刷新剩余次数 — 先乐观递减，再从服务器刷新
-              setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, (prev.remaining ?? 100) - 1) }));
-              loadDeepseekUsage();
-            } else {
-              const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
-              response = { message: `❌ DeepSeek 云端错误: ${errData.error || proxyRes.statusText}`, response_type: 'error', tasks: [] };
-            }
-          } catch (e: any) {
-            response = { message: `❌ DeepSeek 云端连接失败: ${e?.message || '网络错误，请检查服务器是否运行'}`, response_type: 'error', tasks: [] };
-          }
-        } else if (activeModel === 'deepseek_user') {
-          // DeepSeek 自有密钥（通过服务端代理 API，自动使用用户密钥）
-          setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🔑 正在使用您的 DeepSeek 密钥...' } : m
-          ));
-          try {
-            const token = localStorage.getItem('token');
-            const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                model: 'deepseek_user',
-                messages: [{ role: 'user', content: text }],
-              }),
-            });
-            if (proxyRes.ok) {
-              const data = await proxyRes.json();
-              const content = data.choices?.[0]?.message?.content || '';
-              const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              const parsed = safeParseJSON(cleanJson);
-              if (parsed && (parsed as any).message) {
-                response = parsed as unknown as AiResponse;
-              } else {
-                response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
+              if (activeModel === 'deepseek_cloud') {
+                setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, (prev.remaining ?? 100) - 1) }));
+                loadDeepseekUsage();
               }
             } else {
-              const errData = await proxyRes.json().catch(() => ({ error: '连接失败' }));
-              response = { message: `⚠️ ${errData.error || '请求失败'}`, response_type: 'error', tasks: [] };
+              const errData = await proxyRes.json().catch(() => ({ error: `HTTP ${proxyRes.status}` }));
+              response = { message: `❌ 云端错误: ${errData.error || proxyRes.statusText}`, response_type: 'error', tasks: [] };
             }
-          } catch {
-            response = { message: '❌ DeepSeek 连接失败', response_type: 'error', tasks: [] };
+          } catch (e: any) {
+            response = { message: `❌ 云端连接失败: ${e?.message || '网络错误'}`, response_type: 'error', tasks: [] };
           }
         } else {
-          // 本地内置引擎推理
+          // 本地模型推理
           setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: `🧠 ${activeModel} 本地推理中...` } : m
+            m.id === loadingId ? { ...m, content: `🧠 本地模型推理中...` } : m
           ));
           try {
             let inferResult: string | null = null;
@@ -477,7 +427,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 lastError = String(e);
                 if (String(e).includes('正在加载') && retry < MAX_RETRIES - 1) {
                   setMessages(prev => prev.map(m =>
-                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中，${RETRY_DELAY / 1000}秒后自动重试 (${retry + 1}/${MAX_RETRIES})...` } : m
+                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中 (${retry + 1}/${MAX_RETRIES})...` } : m
                   ));
                   await new Promise(r => setTimeout(r, RETRY_DELAY));
                   continue;
@@ -500,65 +450,68 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
           }
         }
-        } else if (activeModel === 'openclaw') {
-          // OpenClaw Agent 执行
-          setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🤖 OpenClaw Agent 执行中...' } : m
-          ));
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const result = await invoke<{success: boolean; output: string; requires_auth: boolean; auth_level: string; tool_used: string}>('openclaw_execute', { prompt: text });
-            if (result.requires_auth) {
-              setAuthConfirm({ visible: true, prompt: text, level: result.auth_level, confirmCount: 0 });
-              response = {
-                message: '⚠️ 此操作需要您的授权，请在弹窗中确认执行。',
-                response_type: 'info',
-                tasks: [],
-              };
-            } else {
-              response = {
-                message: '✅ OpenClaw 执行完成\n\n' + result.output,
-                response_type: 'info',
-                tasks: [],
-              };
-            }
-          } catch (e) {
-            response = { message: '❌ OpenClaw 执行失败: ' + e, response_type: 'error', tasks: [] };
-          }
-        } else {
-          response = {
-            message: `📋 模拟解析：「${text}」\n\n这是开发模式，实际运行时将调用 AI 引擎。`,
-            response_type: 'info',
-            tasks: [],
-          };
-        }
+      } else {
+        response = { message: `📋 开发模式：「${text}」`, response_type: 'info', tasks: [] };
+      }
 
-      // 能力三：本地执行 — 当 AI 返回 execute 类型时,运行本地命令
-      if (response.response_type === 'execute' && response.execute_command) {
+      // ========== 步骤3: 本地执行（当开关开启 + AI 返回 execute 类型）==========
+      if (localExecEnabled && response.response_type === 'execute' && response.execute_command) {
         const execCmd = response.execute_command;
+        executedCommand = execCmd;
         setMessages(prev => prev.map(m =>
           m.id === loadingId ? { ...m, content: `⚙️ 正在执行: \`${execCmd}\`...` } : m
         ));
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          const execResult = await invoke<string>('execute_script', {
-            scriptContent: execCmd,
-            scriptType: navigator.platform.includes('Mac') ? 'bash' : 'powershell'
-          });
-          response.message = `✅ 执行完成\n\n\`\`\`\n$ ${execCmd}\n${execResult}\`\`\``;
-          response.response_type = 'info';
+          // 优先用 OpenClaw（更强大），降级到 execute_script
+          let execResult = '';
+          if (openclawStatus.running) {
+            try {
+              const clawResult = await invoke<{success: boolean; output: string; requires_auth: boolean; auth_level: string}>('openclaw_execute', { prompt: execCmd });
+              if (clawResult.requires_auth) {
+                setAuthConfirm({ visible: true, prompt: execCmd, level: clawResult.auth_level, confirmCount: 0 });
+                response.message = '⚠️ 此操作需要您的授权，请在弹窗中确认。';
+                response.response_type = 'info';
+                executedCommand = '';
+              } else {
+                execResult = clawResult.output;
+              }
+            } catch {
+              // OpenClaw 失败，降级到 execute_script
+              execResult = await invoke<string>('execute_script', {
+                scriptContent: execCmd,
+                scriptType: navigator.platform.includes('Mac') ? 'bash' : 'powershell'
+              });
+            }
+          } else {
+            execResult = await invoke<string>('execute_script', {
+              scriptContent: execCmd,
+              scriptType: navigator.platform.includes('Mac') ? 'bash' : 'powershell'
+            });
+          }
+          if (execResult) {
+            response.message = `✅ 执行完成\n\n\`\`\`\n$ ${execCmd}\n${execResult}\`\`\``;
+            response.response_type = 'info';
+          }
         } catch (execErr) {
           response.message = `❌ 执行失败: ${execErr}\n\n命令: \`${execCmd}\``;
           response.response_type = 'error';
+          executedCommand = '';
         }
+      } else if (!localExecEnabled && response.response_type === 'execute') {
+        // 本地执行关闭时，把命令告诉用户但不执行
+        response.message = `🔧 建议执行以下命令：\n\n\`\`\`\n${response.execute_command}\`\`\`\n\n（本地执行已关闭，请手动执行或开启本地执行开关）`;
+        response.response_type = 'info';
       }
 
+      // ========== 步骤4: 构建消息 ==========
       const aiMsg: ChatMessage = {
         id: loadingId,
         role: 'ai',
         content: response.message,
         tasks: response.tasks,
         responseType: response.response_type,
+        executedCommand: executedCommand || undefined,
         timestamp: Date.now(),
       };
       setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
@@ -666,23 +619,15 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   return (
     <div className="ai-page">
       {/* 顶部模型状态栏 */}
-      <div className="ai-model-bar">
+      <div className="ai-model-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <button className="ai-model-toggle" onClick={() => { setShowModelPanel(!showModelPanel); loadModels(); }}>
-          <span className={`ai-model-dot ${engineRunning || activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user' || (activeModel === 'openclaw' && openclawStatus.running) ? '' : 'offline'}`} />
+          <span className={`ai-model-dot ${engineRunning || activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user' ? '' : 'offline'}`} />
           当前模型：
-          {activeModel === 'rule_engine' ? (
-            '请选择 AI 模型'
-          ) : activeModel === 'deepseek_cloud' ? (
+          {activeModel === 'deepseek_cloud' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
               <Cloud size={14} style={{marginRight:4,opacity:0.7}} />
               DeepSeek 云端
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#fef3c7', color: '#b45309', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>官方</span>
-            </span>
-          ) : activeModel === 'openclaw' ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <Cpu size={14} style={{marginRight:4,opacity:0.7}} />
-              OpenClaw {openclawStatus.running ? '✅' : '⚪'}
-              <span style={{ marginLeft: 6, padding: '1px 6px', background: '#eff6ff', color: '#3b82f6', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>本地</span>
             </span>
           ) : activeModel === 'deepseek_user' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
@@ -690,15 +635,49 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               DeepSeek 云端
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#dcfce7', color: '#166534', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>自己</span>
             </span>
+          ) : activeModel === 'rule_engine' ? (
+            '请选择 AI 模型'
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
               <Brain size={14} style={{marginRight:4,opacity:0.7}} />
-              {(models.find(m => m.id === activeModel)?.name || '未知模型').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*/u, '')}
+              {(models.find(m => m.id === activeModel)?.name || '本地模型').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+\s*/u, '')}
               <span style={{ marginLeft: 6, padding: '1px 6px', background: '#eff6ff', color: '#3b82f6', borderRadius: 10, fontSize: 10, fontWeight: 500 }}>本地</span>
             </span>
           )}
           <ChevronDown size={14} style={{ marginLeft: 4 }} />
         </button>
+
+        {/* 独立能力开关 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => setLocalExecEnabled(!localExecEnabled)}
+            title={localExecEnabled ? '本地执行已开启（点击关闭）' : '本地执行已关闭（点击开启）'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+              background: localExecEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
+              color: localExecEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
+            }}
+          >
+            <Terminal size={12} />
+            本地执行{localExecEnabled ? ' ✅' : ''}
+          </button>
+          <button
+            onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+            title={webSearchEnabled ? '联网搜索已开启（点击关闭）' : '联网搜索已关闭（点击开启）'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+              background: webSearchEnabled ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'var(--card-bg, #f3f4f6)',
+              color: webSearchEnabled ? '#fff' : 'var(--text-secondary, #9ca3af)',
+            }}
+          >
+            {webSearchEnabled ? <Wifi size={12} /> : <WifiOff size={12} />}
+            联网搜索{webSearchEnabled ? ' ✅' : ''}
+          </button>
+        </div>
       </div>
 
       {/* 模型选择面板 */}
@@ -1091,6 +1070,41 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       ))}
                     </div>
                   )}
+                  {/* 执行完成后的"存为任务"按钮 */}
+                  {msg.executedCommand && msg.role === 'ai' && !msg.loading && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => {
+                          const task: AiTaskResult = {
+                            task_name: `执行: ${msg.executedCommand!.substring(0, 30)}...`,
+                            task_type: 'script',
+                            path: '',
+                            schedule_type: 'daily',
+                            schedule_time: '09:00',
+                            schedule_days: [],
+                            enabled: true,
+                            confidence: 0.9,
+                            steps: [{
+                              order: 1,
+                              type: 'execute_script',
+                              script_content: msg.executedCommand!,
+                              script_type: navigator.platform.includes('Mac') ? 'bash' : 'powershell',
+                            }],
+                          };
+                          handleAddTask(task);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '5px 12px', borderRadius: 8, fontSize: 12,
+                          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                          color: '#fff', border: 'none', cursor: 'pointer',
+                          fontWeight: 500, transition: 'all 0.2s',
+                        }}
+                      >
+                        <Calendar size={12} /> 存为定时任务
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1113,29 +1127,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       {/* 输入框 */}
       <div className="ai-input-bar">
-        <button
-          className={`ai-btn-web-search ${webSearchEnabled ? 'active' : ''}`}
-          title={webSearchEnabled ? '联网搜索已开启' : '点击开启联网搜索'}
-          onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-          style={{
-            background: webSearchEnabled ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'transparent',
-            color: webSearchEnabled ? '#fff' : 'var(--text-secondary, #9ca3af)',
-            border: webSearchEnabled ? 'none' : '1px solid var(--border-color, #e5e7eb)',
-            borderRadius: 8,
-            padding: '6px 10px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 12,
-            fontWeight: 500,
-            transition: 'all 0.2s',
-            marginRight: 4,
-          }}
-        >
-          {webSearchEnabled ? <Wifi size={14} /> : <WifiOff size={14} />}
-          {webSearchEnabled ? '联网' : '离线'}
-        </button>
         <button
           className="ai-btn-image"
           title="发送图片进行分析"

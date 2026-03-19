@@ -7,9 +7,6 @@ const router = Router();
 /**
  * POST /api/devices/heartbeat
  * 桌面端定期上报系统信息
- * Body: { device_id, name, platform, hostname, os_version, cpu, cpu_temp,
- *         memory, memory_used, memory_total, disk, disk_used, disk_total, tasks_running }
- * Header: Authorization: Bearer <token>
  */
 router.post('/heartbeat', authMiddleware, (req: Request, res: Response) => {
   try {
@@ -26,7 +23,6 @@ router.post('/heartbeat', authMiddleware, (req: Request, res: Response) => {
 
     const db = getDB();
 
-    // UPSERT: 存在则更新，不存在则插入
     db.prepare(`
       INSERT INTO devices (user_id, device_id, name, platform, hostname, os_version,
         cpu, cpu_temp, memory, memory_used, memory_total,
@@ -65,7 +61,6 @@ router.post('/heartbeat', authMiddleware, (req: Request, res: Response) => {
 /**
  * GET /api/devices
  * 手机端获取当前用户所有设备列表
- * Header: Authorization: Bearer <token>
  */
 router.get('/', authMiddleware, (req: Request, res: Response) => {
   try {
@@ -78,7 +73,6 @@ router.get('/', authMiddleware, (req: Request, res: Response) => {
       WHERE user_id = ? AND last_seen < datetime('now', '-2 minutes')
     `).run(userId);
 
-    // 获取设备列表（最多100台），在线的排前面
     const devices = db.prepare(`
       SELECT device_id, name, platform, hostname, os_version, ip,
              cpu, cpu_temp, memory, memory_used, memory_total,
@@ -101,6 +95,121 @@ router.get('/', authMiddleware, (req: Request, res: Response) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ========== 以下是【具名路由】，必须放在 /:deviceId 之前 ==========
+
+/**
+ * GET /api/devices/tasks/summary
+ * 获取当前用户所有设备的任务统计
+ */
+router.get('/tasks/summary', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const db = getDB();
+
+    const running = db.prepare(
+      `SELECT COALESCE(SUM(tasks_running), 0) as count FROM devices WHERE user_id = ? AND online = 1`
+    ).get(userId) as any;
+
+    const completed = db.prepare(
+      `SELECT COUNT(*) as count FROM activity_log WHERE user_id = ? AND action = 'task_complete'`
+    ).get(userId) as any;
+
+    const pending = db.prepare(
+      `SELECT COUNT(*) as count FROM activity_log WHERE user_id = ? AND action = 'task_pending'`
+    ).get(userId) as any;
+
+    res.json({
+      running: running?.count || 0,
+      completed: completed?.count || 0,
+      pending: pending?.count || 0,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/devices/activity-log
+ * 获取最近操作记录
+ */
+router.get('/activity-log', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const db = getDB();
+
+    const logs = db.prepare(`
+      SELECT id, device_id, device_name, action, detail, status, created_at
+      FROM activity_log
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(userId, limit);
+
+    res.json({ logs });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/devices/activity-log
+ * PC端上报操作记录
+ */
+router.post('/activity-log', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { device_id, device_name, action, detail, status } = req.body;
+    const db = getDB();
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, device_id, device_name, action, detail, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(userId, device_id || '', device_name || '', action || '', detail || '', status || 'success');
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/devices/updates/check
+ * 手机端检查更新
+ * Query: platform=android&version=1.0.0
+ */
+router.get('/updates/check', (req: Request, res: Response) => {
+  try {
+    const platform = (req.query.platform as string) || 'android';
+    const currentVersion = (req.query.version as string) || '0.0.0';
+    const db = getDB();
+
+    const latest = db.prepare(`
+      SELECT version, download_url, changelog, force_update
+      FROM app_updates
+      WHERE platform = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(platform) as any;
+
+    if (latest && latest.version !== currentVersion) {
+      res.json({
+        has_update: true,
+        version: latest.version,
+        download_url: latest.download_url,
+        changelog: latest.changelog,
+        force_update: latest.force_update === 1,
+      });
+    } else {
+      res.json({ has_update: false });
+    }
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ========== 以下是【参数路由】，必须放在最后 ==========
 
 /**
  * GET /api/devices/:deviceId
@@ -126,6 +235,23 @@ router.get('/:deviceId', authMiddleware, (req: Request, res: Response) => {
     }
 
     res.json(device);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * DELETE /api/devices/:deviceId
+ * 远程退出设备登录（删除设备记录）
+ */
+router.delete('/:deviceId', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { deviceId } = req.params;
+    const db = getDB();
+
+    db.prepare('DELETE FROM devices WHERE user_id = ? AND device_id = ?').run(userId, deviceId);
+    res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

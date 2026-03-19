@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:image_picker/image_picker.dart';
 import '../l10n/app_localizations.dart';
 import '../models/message.dart';
 import '../models/device.dart';
@@ -101,7 +103,10 @@ class AiPage extends ConsumerStatefulWidget {
 class _AiPageState extends ConsumerState<AiPage> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  final _speech = stt.SpeechToText();
+  final _imagePicker = ImagePicker();
   bool _isLoading = false;
+  bool _isListening = false;
 
   @override
   void dispose() {
@@ -502,8 +507,13 @@ class _AiPageState extends ConsumerState<AiPage> {
               ),
               child: Row(
                 children: [
-                  _buildInputButton(Icons.mic_rounded, isDark, () {}),
-                  _buildInputButton(Icons.image_rounded, isDark, () {}),
+                  _buildInputButton(
+                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                    isDark,
+                    _startVoice,
+                    active: _isListening,
+                  ),
+                  _buildInputButton(Icons.image_rounded, isDark, _pickImage),
                   Expanded(
                     child: TextField(
                       controller: _inputController,
@@ -568,7 +578,129 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  Widget _buildInputButton(IconData icon, bool isDark, VoidCallback onTap) {
+  /// 语音输入 — speech_to_text
+  Future<void> _startVoice() async {
+    if (_isListening) {
+      await _speech.stop();
+      setState(() => _isListening = false);
+      return;
+    }
+
+    final available = await _speech.initialize(
+      onError: (e) {
+        setState(() => _isListening = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).isZh ? '语音识别失败: ${e.errorMsg}' : 'Voice error: ${e.errorMsg}')),
+          );
+        }
+      },
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          setState(() => _isListening = false);
+        }
+      },
+    );
+
+    if (available) {
+      setState(() => _isListening = true);
+      await _speech.listen(
+        onResult: (result) {
+          if (result.finalResult && result.recognizedWords.isNotEmpty) {
+            _inputController.text = result.recognizedWords;
+            setState(() => _isListening = false);
+          }
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        localeId: AppLocalizations.of(context).isZh ? 'zh_CN' : 'en_US',
+      );
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context).isZh ? '语音识别不可用' : 'Speech recognition unavailable')),
+        );
+      }
+    }
+  }
+
+  /// 图片选择 — image_picker
+  Future<void> _pickImage() async {
+    final l = AppLocalizations.of(context);
+
+    // 弹出选择菜单: 相册 or 相机
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1A1D2E)
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppTheme.primaryBlue),
+              title: Text(l.isZh ? '从相册选择' : 'Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppTheme.successGreen),
+              title: Text(l.isZh ? '拍照' : 'Take Photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.close_rounded, color: AppTheme.textHint),
+              title: Text(l.cancel),
+              onTap: () => Navigator.pop(ctx),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      // 将图片路径显示在输入框中，然后附在消息中发送
+      final fileName = image.path.split('/').last;
+      _inputController.text = l.isZh ? '[图片: $fileName]' : '[Image: $fileName]';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.isZh ? '已选择图片: $fileName' : 'Image selected: $fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.isZh ? '选择图片失败' : 'Failed to pick image')),
+        );
+      }
+    }
+  }
+
+  Widget _buildInputButton(IconData icon, bool isDark, VoidCallback onTap, {bool active = false}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -576,7 +708,11 @@ class _AiPageState extends ConsumerState<AiPage> {
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Icon(icon, size: 22, color: isDark ? Colors.white38 : AppTheme.textHint),
+          child: Icon(
+            icon,
+            size: 22,
+            color: active ? AppTheme.errorRed : (isDark ? Colors.white38 : AppTheme.textHint),
+          ),
         ),
       ),
     );

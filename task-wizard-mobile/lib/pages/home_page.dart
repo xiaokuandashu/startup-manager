@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device.dart';
 import '../providers/device_provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/device_card.dart';
 import '../widgets/stat_card.dart';
@@ -86,7 +88,7 @@ class HomePage extends ConsumerWidget {
               ),
               const SizedBox(height: 24),
 
-              // ===== 我的设备 =====
+              // ===== 1. 我的设备 =====
               _sectionTitle(
                 l.myDevices,
                 '$onlineCount${l.isZh ? "台在线" : " online"} · ${allDevices.length}${l.isZh ? "台" : ""}',
@@ -111,7 +113,6 @@ class HomePage extends ConsumerWidget {
                         child: DeviceCard(device: homeDevices[index]),
                       );
                     }
-                    // "查看更多" 卡片
                     return _buildViewMoreCard(allDevices.length, isDark, l, () {
                       Navigator.push(context, MaterialPageRoute(
                         builder: (_) => _DevicesListPage(devices: allDevices),
@@ -122,29 +123,9 @@ class HomePage extends ConsumerWidget {
               ),
               const SizedBox(height: 28),
 
-              // ===== 任务概览 =====
+              // ===== 2. 设备状态 (原电脑状态) =====
               _sectionTitle(
-                l.taskOverview, '',
-                isDark,
-                onTap: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => _TaskOverviewPage(),
-                )),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: StatCard(label: l.running, value: '${activeDevice?.tasksRunning ?? 0}', color: AppTheme.successGreen, icon: Icons.play_circle_outline)),
-                  const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: l.completed, value: '0', color: AppTheme.primaryBlue, icon: Icons.check_circle_outline)),
-                  const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: l.pending, value: '0', color: AppTheme.warningOrange, icon: Icons.schedule_rounded)),
-                ],
-              ),
-              const SizedBox(height: 28),
-
-              // ===== 电脑状态 =====
-              _sectionTitle(
-                l.computerStatus, '',
+                l.deviceStatus, '',
                 isDark,
                 onTap: activeDevice != null ? () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => _DeviceDetailPage(device: activeDevice),
@@ -203,7 +184,7 @@ class HomePage extends ConsumerWidget {
                       Icon(Icons.computer_outlined, size: 48, color: isDark ? Colors.white30 : const Color(0xFFD1D5DB)),
                       const SizedBox(height: 12),
                       Text(
-                        '暂无设备连接\n请先在电脑端登录任务精灵',
+                        '${l.noDevices}\n${l.isZh ? "请先在电脑端登录任务精灵" : "Please login on PC first"}',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: isDark ? Colors.white38 : AppTheme.textHint, height: 1.5),
                       ),
@@ -213,7 +194,19 @@ class HomePage extends ConsumerWidget {
               ),
               const SizedBox(height: 28),
 
-              // ===== 最近记录 =====
+              // ===== 3. 任务概览 (真实数据) =====
+              _sectionTitle(
+                l.taskOverview, '',
+                isDark,
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => _TaskOverviewPage(),
+                )),
+              ),
+              const SizedBox(height: 12),
+              _TaskSummaryRow(isDark: isDark),
+              const SizedBox(height: 28),
+
+              // ===== 4. 最近记录 (真实数据) =====
               _sectionTitle(
                 l.recentActivity,
                 l.viewAll,
@@ -223,28 +216,14 @@ class HomePage extends ConsumerWidget {
                 )),
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: AppTheme.cardShadow,
-                ),
-                child: Column(
-                  children: [
-                    _buildTimelineItem('09:00', '电脑 → 打开微信', Icons.check_circle_rounded, AppTheme.successGreen, isDark, isFirst: true),
-                    _buildTimelineItem('09:01', '电脑 → 需要手机扫码', Icons.warning_rounded, AppTheme.warningOrange, isDark),
-                    _buildTimelineItem('09:01', '手机 → 自动打开微信扫码', Icons.phone_android_rounded, AppTheme.primaryBlue, isDark),
-                    _buildTimelineItem('09:02', '授权完成', Icons.verified_rounded, AppTheme.successGreen, isDark, isLast: true),
-                  ],
-                ),
-              ),
+              _ActivityLogSection(isDark: isDark),
             ],
           ),
         ),
       ),
     );
   }
+
 
   Widget _buildViewMoreCard(int totalCount, bool isDark, AppLocalizations l, VoidCallback onTap) {
     return GestureDetector(
@@ -490,7 +469,199 @@ class _CircularProgressPainter extends CustomPainter {
 }
 
 // ================================================================
-// 以下是二级页面占位实现（Batch C 会完善）
+// 真实数据组件
+// ================================================================
+
+/// 任务概览 — 从服务器 API 获取真实数据
+class _TaskSummaryRow extends ConsumerStatefulWidget {
+  final bool isDark;
+  const _TaskSummaryRow({required this.isDark});
+
+  @override
+  ConsumerState<_TaskSummaryRow> createState() => _TaskSummaryRowState();
+}
+
+class _TaskSummaryRowState extends ConsumerState<_TaskSummaryRow> {
+  int _running = 0, _completed = 0, _pending = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSummary();
+  }
+
+  Future<void> _fetchSummary() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+    try {
+      final data = await ApiService.getTaskSummary(token);
+      if (mounted) {
+        setState(() {
+          _running = data['running'] ?? 0;
+          _completed = data['completed'] ?? 0;
+          _pending = data['pending'] ?? 0;
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Row(
+      children: [
+        Expanded(child: StatCard(label: l.running, value: '$_running', color: AppTheme.successGreen, icon: Icons.play_circle_outline)),
+        const SizedBox(width: 12),
+        Expanded(child: StatCard(label: l.completed, value: '$_completed', color: AppTheme.primaryBlue, icon: Icons.check_circle_outline)),
+        const SizedBox(width: 12),
+        Expanded(child: StatCard(label: l.pending, value: '$_pending', color: AppTheme.warningOrange, icon: Icons.schedule_rounded)),
+      ],
+    );
+  }
+}
+
+/// 最近记录 — 从服务器 API 获取真实数据
+class _ActivityLogSection extends ConsumerStatefulWidget {
+  final bool isDark;
+  const _ActivityLogSection({required this.isDark});
+
+  @override
+  ConsumerState<_ActivityLogSection> createState() => _ActivityLogSectionState();
+}
+
+class _ActivityLogSectionState extends ConsumerState<_ActivityLogSection> {
+  List<Map<String, dynamic>> _logs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLogs();
+  }
+
+  Future<void> _fetchLogs() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+    try {
+      final data = await ApiService.getActivityLog(token, limit: 5);
+      if (mounted) {
+        setState(() {
+          _logs = List<Map<String, dynamic>>.from(data['logs'] ?? []);
+        });
+      }
+    } catch (_) {}
+  }
+
+  IconData _actionIcon(String action) {
+    switch (action) {
+      case 'task_complete': return Icons.check_circle_rounded;
+      case 'task_start': return Icons.play_circle_rounded;
+      case 'task_error': return Icons.error_rounded;
+      case 'app_launch': return Icons.apps_rounded;
+      case 'script_exec': return Icons.code_rounded;
+      default: return Icons.info_rounded;
+    }
+  }
+
+  Color _actionColor(String status) {
+    switch (status) {
+      case 'success': return AppTheme.successGreen;
+      case 'error': return const Color(0xFFEF4444);
+      case 'warning': return AppTheme.warningOrange;
+      default: return AppTheme.primaryBlue;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final l = AppLocalizations.of(context);
+
+    if (_logs.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.event_note_rounded, size: 40, color: isDark ? Colors.white24 : const Color(0xFFD1D5DB)),
+              const SizedBox(height: 10),
+              Text(l.noRecords, style: TextStyle(fontSize: 13, color: isDark ? Colors.white38 : AppTheme.textHint)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        children: _logs.asMap().entries.map((e) {
+          final i = e.key;
+          final log = e.value;
+          final action = log['action'] ?? '';
+          final status = log['status'] ?? 'success';
+          final detail = log['detail'] ?? action;
+          final time = (log['created_at'] ?? '').toString();
+          final timeStr = time.length >= 16 ? time.substring(11, 16) : time;
+          final color = _actionColor(status);
+          final icon = _actionIcon(action);
+
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Column(
+                    children: [
+                      if (i > 0) Expanded(child: Container(width: 2, color: isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE8EBF5))),
+                      Container(
+                        width: 10, height: 10,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 6, spreadRadius: 1)]),
+                      ),
+                      if (i < _logs.length - 1) Expanded(child: Container(width: 2, color: isDark ? const Color(0xFF2A2D3E) : const Color(0xFFE8EBF5))),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32, height: 32,
+                          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                          child: Icon(icon, size: 16, color: color),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(detail, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? const Color(0xDEFFFFFF) : AppTheme.textPrimary))),
+                        Text(timeStr, style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ================================================================
+// 以下是二级页面
 // ================================================================
 
 /// 设备列表页 — X/100 台
@@ -501,16 +672,16 @@ class _DevicesListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context);
     final onlineCount = devices.where((d) => d.online).length;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的设备'),
+        title: Text(l.myDevices),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          // 统计条
           Container(
             margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -523,18 +694,17 @@ class _DevicesListPage extends StatelessWidget {
                 const Icon(Icons.devices_rounded, color: Colors.white, size: 22),
                 const SizedBox(width: 12),
                 Text(
-                  '$onlineCount 台在线 · ${devices.length}/100 台',
+                  '$onlineCount ${l.onlineCount} · ${devices.length}/100',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 const Spacer(),
                 Text(
-                  '剩余 ${100 - devices.length} 台',
+                  '${l.isZh ? "剩余" : "Remaining"} ${100 - devices.length}',
                   style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
                 ),
               ],
             ),
           ),
-          // 设备列表
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -584,14 +754,14 @@ class _DevicesListPage extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    d.online ? d.commLabel : '离线',
+                                    d.online ? d.commLabel : l.deviceOffline,
                                     style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint),
                                   ),
                                   if (d.online) ...[
                                     const SizedBox(width: 12),
                                     Text('CPU ${d.cpu.toInt()}%', style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
                                     const SizedBox(width: 8),
-                                    Text('内存 ${d.memory.toInt()}%', style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
+                                    Text('${l.memoryLabel} ${d.memory.toInt()}%', style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
                                   ],
                                 ],
                               ),
@@ -612,7 +782,7 @@ class _DevicesListPage extends StatelessWidget {
   }
 }
 
-/// 设备详情页 — 参考绿联云任务管理器
+/// 设备详情页
 class _DeviceDetailPage extends StatelessWidget {
   final Device device;
   const _DeviceDetailPage({required this.device});
@@ -620,6 +790,7 @@ class _DeviceDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(title: Text(device.name), centerTitle: true),
@@ -628,19 +799,18 @@ class _DeviceDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // CPU + 内存 双卡片（参考绿联云风格）
             Row(
               children: [
                 Expanded(child: _statusCard(
                   'CPU', device.cpu,
                   AppTheme.primaryBlue,
-                  subtitle: device.cpuTemp > 0 ? '温度 ${device.cpuTemp.toInt()}°C' : null,
-                  detail: '利用率 ${device.cpu.toInt()}%',
+                  subtitle: device.cpuTemp > 0 ? '${l.temperature} ${device.cpuTemp.toInt()}°C' : null,
+                  detail: '${l.utilization} ${device.cpu.toInt()}%',
                   isDark: isDark,
                 )),
                 const SizedBox(width: 14),
                 Expanded(child: _statusCard(
-                  '内存', device.memory,
+                  l.memoryLabel, device.memory,
                   const Color(0xFF8B5CF6),
                   subtitle: device.memoryTotal > 0 ? device.memoryDisplay : null,
                   detail: '${device.memory.toInt()}%',
@@ -650,17 +820,15 @@ class _DeviceDetailPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-
-            // 硬盘卡片
             _sectionCard(
-              title: '硬盘',
+              title: l.diskLabel,
               isDark: isDark,
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('总计', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.textSecondary, fontSize: 13)),
+                      Text(l.total, style: TextStyle(color: isDark ? Colors.white54 : AppTheme.textSecondary, fontSize: 13)),
                       Text(device.diskTotal > 0 ? device.diskDisplay : '${device.disk.toInt()}%',
                         style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppTheme.textPrimary)),
                     ],
@@ -679,34 +847,16 @@ class _DeviceDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-
-            // 设备信息卡片
             _sectionCard(
-              title: '设备信息',
+              title: l.isZh ? '设备信息' : 'Device Info',
               isDark: isDark,
               child: Column(
                 children: [
-                  _infoRow('平台', device.platform == 'macos' ? 'macOS' : 'Windows', isDark),
-                  _infoRow('状态', device.online ? '在线 (${device.commLabel})' : '离线', isDark),
+                  _infoRow(l.isZh ? '平台' : 'Platform', device.platform == 'macos' ? 'macOS' : 'Windows', isDark),
+                  _infoRow(l.isZh ? '状态' : 'Status', device.online ? '${l.deviceOnline} (${device.commLabel})' : l.deviceOffline, isDark),
                   if (device.osVersion.isNotEmpty)
-                    _infoRow('系统版本', device.osVersion, isDark),
-                  _infoRow('运行任务', '${device.tasksRunning} 个', isDark),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 操作按钮
-            _sectionCard(
-              title: '远程操作',
-              isDark: isDark,
-              child: Row(
-                children: [
-                  _actionButton(Icons.folder_rounded, '文件浏览', const Color(0xFF14B8A6), isDark),
-                  const SizedBox(width: 16),
-                  _actionButton(Icons.computer_rounded, '远程启动', const Color(0xFF6366F1), isDark),
-                  const SizedBox(width: 16),
-                  _actionButton(Icons.code_rounded, '执行脚本', const Color(0xFF8B5CF6), isDark),
+                    _infoRow(l.isZh ? '系统版本' : 'OS Version', device.osVersion, isDark),
+                  _infoRow(l.isZh ? '运行任务' : 'Tasks', '${device.tasksRunning}', isDark),
                 ],
               ),
             ),
@@ -718,41 +868,24 @@ class _DeviceDetailPage extends StatelessWidget {
 
   Widget _statusCard(String title, double value, Color color, {String? subtitle, String? detail, bool isDark = false, bool showCircle = false}) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      height: 140,
+      padding: const EdgeInsets.all(16), height: 140,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [color, color.withOpacity(0.8)],
-        ),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, color.withOpacity(0.8)]),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 20),
-            ],
-          ),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
           const Spacer(),
-          if (subtitle != null)
-            Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7))),
+          if (subtitle != null) Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7))),
           const SizedBox(height: 4),
           Text(detail ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: value / 100,
-              minHeight: 4,
-              backgroundColor: Colors.white.withOpacity(0.2),
-              valueColor: const AlwaysStoppedAnimation(Colors.white),
-            ),
+            child: LinearProgressIndicator(value: value / 100, minHeight: 4, backgroundColor: Colors.white.withOpacity(0.2), valueColor: const AlwaysStoppedAnimation(Colors.white)),
           ),
         ],
       ),
@@ -770,16 +903,7 @@ class _DeviceDetailPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : AppTheme.textPrimary,
-              )),
-              Icon(Icons.chevron_right_rounded, size: 20, color: isDark ? Colors.white24 : const Color(0xFFD0D5E0)),
-            ],
-          ),
+          Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppTheme.textPrimary)),
           const SizedBox(height: 14),
           child,
         ],
@@ -799,76 +923,81 @@ class _DeviceDetailPage extends StatelessWidget {
       ),
     );
   }
-
-  Widget _actionButton(IconData icon, String label, Color color, bool isDark) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 24, color: color),
-            const SizedBox(height: 6),
-            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-/// 任务概览页
-class _TaskOverviewPage extends StatelessWidget {
+/// 任务概览页 — 真实数据
+class _TaskOverviewPage extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_TaskOverviewPage> createState() => _TaskOverviewPageState();
+}
+
+class _TaskOverviewPageState extends ConsumerState<_TaskOverviewPage> {
+  List<Map<String, dynamic>> _logs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLogs();
+  }
+
+  Future<void> _fetchLogs() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+    try {
+      final data = await ApiService.getActivityLog(token, limit: 100);
+      if (mounted) setState(() => _logs = List<Map<String, dynamic>>.from(data['logs'] ?? []));
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context);
+    final running = _logs.where((l) => l['action'] == 'task_start').toList();
+    final completed = _logs.where((l) => l['action'] == 'task_complete').toList();
+    final pending = _logs.where((l) => l['action'] == 'task_pending').toList();
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('任务概览'),
+          title: Text(l.taskOverview),
           centerTitle: true,
           bottom: TabBar(
             labelColor: AppTheme.primaryBlue,
             unselectedLabelColor: isDark ? Colors.white38 : AppTheme.textHint,
             indicatorColor: AppTheme.primaryBlue,
-            tabs: const [
-              Tab(text: '运行中'),
-              Tab(text: '已完成'),
-              Tab(text: '待执行'),
-            ],
+            tabs: [Tab(text: l.running), Tab(text: l.completed), Tab(text: l.pending)],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildTaskList('running', isDark),
-            _buildTaskList('completed', isDark),
-            _buildTaskList('pending', isDark),
+            _buildTaskList(running, AppTheme.successGreen, isDark, l),
+            _buildTaskList(completed, AppTheme.primaryBlue, isDark, l),
+            _buildTaskList(pending, AppTheme.warningOrange, isDark, l),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTaskList(String type, bool isDark) {
-    final tasks = type == 'running'
-        ? [('每天打开微信', '08:20', 'application'), ('微信自动打卡', '08:25', 'chain')]
-        : type == 'completed'
-            ? [('打开 Chrome', '09:00', 'application'), ('启动钉钉签到', '09:30', 'chain'), ('执行数据备份', '10:00', 'script'), ('打开飞书', '10:30', 'application'), ('执行日志清理', '11:00', 'script')]
-            : [('关机', '23:00', 'script'), ('启动更新', '02:00', 'script'), ('打开邮件', '08:00', 'application')];
-
+  Widget _buildTaskList(List<Map<String, dynamic>> logs, Color color, bool isDark, AppLocalizations l) {
+    if (logs.isEmpty) {
+      return Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inbox_rounded, size: 56, color: isDark ? Colors.white24 : const Color(0xFFD1D5DB)),
+          const SizedBox(height: 12),
+          Text(l.noRecords, style: TextStyle(color: isDark ? Colors.white38 : AppTheme.textHint)),
+        ],
+      ));
+    }
     return ListView.separated(
       padding: const EdgeInsets.all(20),
-      itemCount: tasks.length,
+      itemCount: logs.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final (name, time, taskType) = tasks[index];
-        final color = type == 'running' ? AppTheme.successGreen
-            : type == 'completed' ? AppTheme.primaryBlue
-            : AppTheme.warningOrange;
+        final log = logs[index];
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -884,33 +1013,17 @@ class _TaskOverviewPage extends StatelessWidget {
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  taskType == 'chain' ? Icons.link_rounded
-                      : taskType == 'script' ? Icons.code_rounded
-                      : Icons.apps_rounded,
-                  size: 20, color: color,
-                ),
+                child: Icon(Icons.task_alt_rounded, size: 20, color: color),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppTheme.textPrimary)),
+                    Text(log['detail'] ?? log['action'] ?? '', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppTheme.textPrimary)),
                     const SizedBox(height: 4),
-                    Text('每天 $time', style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
+                    Text(log['device_name'] ?? '', style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
                   ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  type == 'running' ? '运行中' : type == 'completed' ? '已完成' : '待执行',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
                 ),
               ),
             ],
@@ -921,83 +1034,102 @@ class _TaskOverviewPage extends StatelessWidget {
   }
 }
 
-/// 活动日志页
-class _ActivityLogPage extends StatelessWidget {
+/// 活动日志页 — 真实数据
+class _ActivityLogPage extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ActivityLogPage> createState() => _ActivityLogPageState();
+}
+
+class _ActivityLogPageState extends ConsumerState<_ActivityLogPage> {
+  List<Map<String, dynamic>> _logs = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLogs();
+  }
+
+  Future<void> _fetchLogs() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+    try {
+      final data = await ApiService.getActivityLog(token, limit: 100);
+      if (mounted) setState(() { _logs = List<Map<String, dynamic>>.from(data['logs'] ?? []); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final logs = [
-      ('今天', [
-        ('09:02', '授权完成', Icons.verified_rounded, AppTheme.successGreen),
-        ('09:01', '手机 → 自动打开微信扫码', Icons.phone_android_rounded, AppTheme.primaryBlue),
-        ('09:01', '电脑 → 需要手机扫码', Icons.warning_rounded, AppTheme.warningOrange),
-        ('09:00', '电脑 → 打开微信', Icons.check_circle_rounded, AppTheme.successGreen),
-      ]),
-      ('昨天', [
-        ('18:05', '执行关机脚本', Icons.power_settings_new_rounded, const Color(0xFFEF4444)),
-        ('09:30', '钉钉自动签到完成', Icons.check_circle_rounded, AppTheme.successGreen),
-        ('09:00', '打开钉钉', Icons.check_circle_rounded, AppTheme.successGreen),
-      ]),
-    ];
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('活动日志'), centerTitle: true),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: logs.length,
-        itemBuilder: (context, groupIndex) {
-          final (date, items) = logs[groupIndex];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (groupIndex > 0) const SizedBox(height: 20),
-              Text(date, style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white54 : AppTheme.textSecondary,
-              )),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: AppTheme.cardShadow,
-                ),
-                child: Column(
-                  children: items.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final (time, text, icon, color) = entry.value;
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: i < items.length - 1 ? 14 : 0),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(icon, size: 16, color: color),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(text, style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w500,
-                              color: isDark ? const Color(0xDEFFFFFF) : AppTheme.textPrimary,
-                            )),
-                          ),
-                          Text(time, style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
-                        ],
+      appBar: AppBar(title: Text(l.activityLog), centerTitle: true),
+      body: _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _logs.isEmpty
+          ? Center(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.event_note_rounded, size: 56, color: isDark ? Colors.white24 : const Color(0xFFD1D5DB)),
+                const SizedBox(height: 12),
+                Text(l.noRecords, style: TextStyle(color: isDark ? Colors.white38 : AppTheme.textHint)),
+              ],
+            ))
+          : ListView.separated(
+              padding: const EdgeInsets.all(20),
+              itemCount: _logs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final log = _logs[index];
+                final status = log['status'] ?? 'success';
+                final color = status == 'success' ? AppTheme.successGreen
+                    : status == 'error' ? const Color(0xFFEF4444)
+                    : AppTheme.warningOrange;
+                final time = (log['created_at'] ?? '').toString();
+                final timeStr = time.length >= 16 ? time.substring(11, 16) : time;
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: AppTheme.cardShadowSmall,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36, height: 36,
+                        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                        child: Icon(
+                          status == 'success' ? Icons.check_circle_rounded
+                              : status == 'error' ? Icons.error_rounded
+                              : Icons.warning_rounded,
+                          size: 18, color: color,
+                        ),
                       ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(log['detail'] ?? log['action'] ?? '', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.white : AppTheme.textPrimary)),
+                            if ((log['device_name'] ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(log['device_name'], style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Text(timeStr, style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : AppTheme.textHint)),
+                    ],
+                  ),
+                );
+              },
+            ),
     );
   }
+
 }

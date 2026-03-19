@@ -110,4 +110,47 @@ class ApiService {
     );
     return jsonDecode(resp.body);
   }
+
+  /// 获取任务统计 → GET /devices/tasks/summary
+  static Future<Map<String, dynamic>> getTaskSummary(String token) async {
+    final resp = await http.get(
+      Uri.parse('$_baseUrl/devices/tasks/summary'),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 10));
+    return jsonDecode(resp.body);
+  }
+
+  /// 获取操作日志 → GET /devices/activity-log
+  static Future<Map<String, dynamic>> getActivityLog(String token, {int limit = 20}) async {
+    final resp = await http.get(
+      Uri.parse('$_baseUrl/devices/activity-log?limit=$limit'),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 10));
+    return jsonDecode(resp.body);
+  }
+
+  /// 远程退出设备 → DELETE /devices/:deviceId
+  static Future<Map<String, dynamic>> deleteDevice(String token, String deviceId) async {
+    final resp = await http.delete(
+      Uri.parse('$_baseUrl/devices/$deviceId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  /// 检查更新 → GET /devices/updates/check
+  static Future<Map<String, dynamic>> checkUpdate(String platform, String version) async {
+    final resp = await http.get(
+      Uri.parse('$_baseUrl/devices/updates/check?platform=$platform&version=$version'),
+    ).timeout(const Duration(seconds: 10));
+    return jsonDecode(resp.body);
+  }
+
+  /// 获取协议内容 → GET /auth/agreement/:type
+  static Future<Map<String, dynamic>> getAgreement(String type) async {
+    final resp = await http.get(
+      Uri.parse('$_baseUrl/auth/agreement/$type'),
+    ).timeout(const Duration(seconds: 10));
+    return jsonDecode(resp.body);
+  }
 }

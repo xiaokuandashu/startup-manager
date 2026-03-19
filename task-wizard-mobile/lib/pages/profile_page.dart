@@ -6,6 +6,9 @@ import '../providers/settings_provider.dart';
 import '../providers/device_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import 'about_page.dart';
+import 'device_management_page.dart';
+import 'appearance_language_page.dart';
 
 /// 👤 我的页 — 连接真实数据
 class ProfilePage extends ConsumerStatefulWidget {
@@ -93,7 +96,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         ),
                         const Spacer(),
                         GestureDetector(
-                          onTap: () => _showAboutDialog(context, l),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage())),
                           child: Container(
                             width: 38, height: 38,
                             decoration: BoxDecoration(
@@ -146,21 +149,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  // 设备数量 — 真实数据
                                   _profileBadge(
-                                    '$deviceCount 台设备',
+                                    '$deviceCount ${l.isZh ? "台设备" : " devices"}',
                                     AppTheme.successGreen,
                                   ),
                                   const SizedBox(width: 8),
-                                  // VIP 状态 — 真实数据
                                   _profileBadge(
-                                    isVip ? 'VIP' : '免费版',
+                                    isVip ? 'VIP' : l.freeVersion,
                                     isVip ? AppTheme.warningOrange : Colors.white54,
                                   ),
                                   if (onlineCount > 0) ...[
                                     const SizedBox(width: 8),
                                     _profileBadge(
-                                      '$onlineCount 在线',
+                                      '$onlineCount ${l.deviceOnline}',
                                       AppTheme.primaryBlue,
                                     ),
                                   ],
@@ -186,13 +187,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // VIP / 激活码
-                  _sectionTitle('会员管理', isDark),
+                  _sectionTitle(l.vipManagement, isDark),
                   const SizedBox(height: 8),
                   _settingsCard([
                     _buildMenuItem(
                       Icons.diamond_rounded,
-                      isVip ? 'VIP 会员' : '激活会员',
-                      trailing: isVip ? '到期: ${vipExpire ?? "永久"}' : '未开通',
+                      isVip ? 'VIP' : l.activateVip,
+                      trailing: isVip ? '${l.isZh ? "到期" : "Expires"}: ${vipExpire ?? (l.isZh ? "永久" : "Permanent")}' : l.vipInactive,
                       isDark: isDark,
                       trailingColor: isVip ? AppTheme.warningOrange : AppTheme.errorRed,
                       onTap: () => _showActivationDialog(context),
@@ -201,51 +202,44 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
                   const SizedBox(height: 20),
 
-                  // 设备管理
+                  // 设备管理 → 二级页面
                   _sectionTitle(l.deviceManagement, isDark),
                   const SizedBox(height: 8),
                   _settingsCard([
                     _buildMenuItem(
                       Icons.devices_rounded,
                       l.deviceManagement,
-                      trailing: '$deviceCount 台 ($onlineCount 在线)',
+                      trailing: '$deviceCount/100 ($onlineCount ${l.deviceOnline})',
                       isDark: isDark,
                       trailingColor: onlineCount > 0 ? AppTheme.successGreen : null,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DeviceManagementPage())),
                     ),
                   ], isDark),
 
                   const SizedBox(height: 20),
 
-                  // AI 模型设置
-                  _sectionTitle(l.aiModelSettings, isDark),
-                  const SizedBox(height: 8),
+                  // 外观与语言 → 二级页面
                   _settingsCard([
                     _buildMenuItem(
-                      Icons.key_rounded,
-                      'DeepSeek 密钥',
-                      trailing: _loadingKey ? '...' : (_hasCustomKey ? '已配置' : '未配置'),
+                      Icons.palette_rounded,
+                      l.appearanceAndLang,
+                      trailing: '',
                       isDark: isDark,
-                      trailingColor: _hasCustomKey ? AppTheme.successGreen : AppTheme.warningOrange,
-                      onTap: () => _showKeyInputDialog(context),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppearanceLanguagePage())),
                     ),
                   ], isDark),
 
                   const SizedBox(height: 20),
 
-                  // 外观
-                  _sectionTitle(l.appearance, isDark),
-                  const SizedBox(height: 8),
+                  // 关于 → 二级页面
                   _settingsCard([
-                    _buildThemeSelector(ref, settings, l, isDark),
-                    _divider(isDark),
-                    _buildLanguageSelector(ref, settings, l, isDark),
-                  ], isDark),
-
-                  const SizedBox(height: 20),
-
-                  // 关于
-                  _settingsCard([
-                    _buildMenuItem(Icons.info_outline_rounded, l.about, trailing: 'v1.0.0', isDark: isDark),
+                    _buildMenuItem(
+                      Icons.info_outline_rounded,
+                      l.about,
+                      trailing: 'v1.0.0',
+                      isDark: isDark,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage())),
+                    ),
                   ], isDark),
 
                   const SizedBox(height: 24),

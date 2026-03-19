@@ -253,6 +253,21 @@ export function initDB() {
     )
   `);
 
+  // ======== 操作日志表 ========
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      device_id TEXT DEFAULT '',
+      device_name TEXT DEFAULT '',
+      action TEXT NOT NULL,
+      detail TEXT DEFAULT '',
+      status TEXT DEFAULT 'success',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
   // 初始化默认管理员
   const adminExists = db.prepare('SELECT id FROM admin WHERE username = ?').get('admin');
   if (!adminExists) {

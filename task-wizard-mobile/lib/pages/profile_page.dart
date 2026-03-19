@@ -3,18 +3,56 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/device_provider.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
-/// 👤 我的页 — 绿联云风格设置页面
-class ProfilePage extends ConsumerWidget {
+/// 👤 我的页 — 连接真实数据
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends ConsumerState<ProfilePage> {
+  bool _hasCustomKey = false;
+  bool _loadingKey = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadKeyStatus();
+  }
+
+  Future<void> _loadKeyStatus() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+    try {
+      final usage = await ApiService.getDeepseekUsage(token);
+      if (mounted) {
+        setState(() {
+          _hasCustomKey = usage['has_custom_key'] == true;
+          _loadingKey = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingKey = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authProvider);
     final settings = ref.watch(settingsProvider);
+    final devices = ref.watch(deviceListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final deviceCount = devices.length;
+    final onlineCount = devices.where((d) => d.online).length;
+    final isVip = auth.vipStatus == 'active';
+    final vipExpire = auth.vipExpireDate;
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -54,13 +92,16 @@ class ProfilePage extends ConsumerWidget {
                           ),
                         ),
                         const Spacer(),
-                        Container(
-                          width: 38, height: 38,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
+                        GestureDetector(
+                          onTap: () => _showAboutDialog(context, l),
+                          child: Container(
+                            width: 38, height: 38,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.info_outline_rounded, size: 20, color: Colors.white),
                           ),
-                          child: const Icon(Icons.settings_rounded, size: 20, color: Colors.white),
                         ),
                       ],
                     ),
@@ -79,31 +120,14 @@ class ProfilePage extends ConsumerWidget {
                     child: Row(
                       children: [
                         // Avatar
-                        Stack(
-                          children: [
-                            Container(
-                              width: 60, height: 60,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-                              ),
-                              child: const Icon(Icons.person_rounded, size: 32, color: Colors.white),
-                            ),
-                            // Edit badge
-                            Positioned(
-                              right: 0, bottom: 0,
-                              child: Container(
-                                width: 22, height: 22,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.warningOrange,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: const Icon(Icons.edit, size: 11, color: Colors.white),
-                              ),
-                            ),
-                          ],
+                        Container(
+                          width: 60, height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+                          ),
+                          child: const Icon(Icons.person_rounded, size: 32, color: Colors.white),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -122,29 +146,24 @@ class ProfilePage extends ConsumerWidget {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.successGreen.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '3 台设备',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.9)),
-                                    ),
+                                  // 设备数量 — 真实数据
+                                  _profileBadge(
+                                    '$deviceCount 台设备',
+                                    AppTheme.successGreen,
                                   ),
                                   const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.warningOrange.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'VIP',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white.withOpacity(0.9)),
-                                    ),
+                                  // VIP 状态 — 真实数据
+                                  _profileBadge(
+                                    isVip ? 'VIP' : '免费版',
+                                    isVip ? AppTheme.warningOrange : Colors.white54,
                                   ),
+                                  if (onlineCount > 0) ...[
+                                    const SizedBox(width: 8),
+                                    _profileBadge(
+                                      '$onlineCount 在线',
+                                      AppTheme.primaryBlue,
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],
@@ -166,13 +185,33 @@ class ProfilePage extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // VIP / 激活码
+                  _sectionTitle('会员管理', isDark),
+                  const SizedBox(height: 8),
+                  _settingsCard([
+                    _buildMenuItem(
+                      Icons.diamond_rounded,
+                      isVip ? 'VIP 会员' : '激活会员',
+                      trailing: isVip ? '到期: ${vipExpire ?? "永久"}' : '未开通',
+                      isDark: isDark,
+                      trailingColor: isVip ? AppTheme.warningOrange : AppTheme.errorRed,
+                      onTap: () => _showActivationDialog(context),
+                    ),
+                  ], isDark),
+
+                  const SizedBox(height: 20),
+
                   // 设备管理
                   _sectionTitle(l.deviceManagement, isDark),
                   const SizedBox(height: 8),
                   _settingsCard([
-                    _buildMenuItem(Icons.devices_rounded, l.deviceManagement, trailing: '3 台', isDark: isDark),
-                    _divider(isDark),
-                    _buildMenuItem(Icons.qr_code_scanner_rounded, l.isZh ? '扫码配对' : 'QR Pairing', isDark: isDark),
+                    _buildMenuItem(
+                      Icons.devices_rounded,
+                      l.deviceManagement,
+                      trailing: '$deviceCount 台 ($onlineCount 在线)',
+                      isDark: isDark,
+                      trailingColor: onlineCount > 0 ? AppTheme.successGreen : null,
+                    ),
                   ], isDark),
 
                   const SizedBox(height: 20),
@@ -181,9 +220,14 @@ class ProfilePage extends ConsumerWidget {
                   _sectionTitle(l.aiModelSettings, isDark),
                   const SizedBox(height: 8),
                   _settingsCard([
-                    _buildMenuItem(Icons.cloud_rounded, 'API Key 设置', trailing: l.isZh ? '已配置' : 'Set', isDark: isDark, trailingColor: AppTheme.successGreen),
-                    _divider(isDark),
-                    _buildMenuItem(Icons.phone_android_rounded, l.isZh ? '手机本地模型' : 'Local Model', trailing: l.isZh ? '未下载' : 'N/A', isDark: isDark),
+                    _buildMenuItem(
+                      Icons.key_rounded,
+                      'DeepSeek 密钥',
+                      trailing: _loadingKey ? '...' : (_hasCustomKey ? '已配置' : '未配置'),
+                      isDark: isDark,
+                      trailingColor: _hasCustomKey ? AppTheme.successGreen : AppTheme.warningOrange,
+                      onTap: () => _showKeyInputDialog(context),
+                    ),
                   ], isDark),
 
                   const SizedBox(height: 20),
@@ -199,19 +243,6 @@ class ProfilePage extends ConsumerWidget {
 
                   const SizedBox(height: 20),
 
-                  // 安全设置
-                  _sectionTitle(l.security, isDark),
-                  const SizedBox(height: 8),
-                  _settingsCard([
-                    _buildSwitchItem(Icons.fingerprint_rounded, l.isZh ? '指纹锁' : 'Fingerprint', false, (v) {}, isDark),
-                    _divider(isDark),
-                    _buildSwitchItem(Icons.verified_user_rounded, l.isZh ? '自动授权响应' : 'Auto Auth', false, (v) {}, isDark),
-                    _divider(isDark),
-                    _buildSwitchItem(Icons.sms_rounded, l.isZh ? '短信验证码自动转发' : 'SMS Forward', true, (v) {}, isDark),
-                  ], isDark),
-
-                  const SizedBox(height: 20),
-
                   // 关于
                   _settingsCard([
                     _buildMenuItem(Icons.info_outline_rounded, l.about, trailing: 'v1.0.0', isDark: isDark),
@@ -221,7 +252,7 @@ class ProfilePage extends ConsumerWidget {
 
                   // 退出登录按钮
                   GestureDetector(
-                    onTap: () => ref.read(authProvider.notifier).logout(),
+                    onTap: () => _confirmLogout(context, ref),
                     child: Container(
                       width: double.infinity,
                       height: 52,
@@ -244,8 +275,6 @@ class ProfilePage extends ConsumerWidget {
                   ),
 
                   const SizedBox(height: 16),
-
-                  // 版本信息
                   Center(
                     child: Text(
                       '${l.appTitle} v1.0.0',
@@ -261,6 +290,296 @@ class ProfilePage extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ===== 对话框 =====
+
+  void _showActivationDialog(BuildContext ctx) {
+    final controller = TextEditingController();
+    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.diamond_rounded, color: AppTheme.warningOrange, size: 24),
+            const SizedBox(width: 8),
+            Text('激活会员', style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : AppTheme.textPrimary,
+            )),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '输入激活码开通 VIP 会员，享受全部功能',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white54 : AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: '请输入激活码',
+                prefixIcon: const Icon(Icons.vpn_key_rounded, size: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF242738) : const Color(0xFFF5F7FA),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              final code = controller.text.trim();
+              if (code.isEmpty) return;
+              Navigator.pop(dialogCtx);
+
+              try {
+                final token = ref.read(authProvider).token ?? '';
+                final result = await ApiService.activateCode(token, code);
+                if (result['success'] == true || result['expire_date'] != null) {
+                  if (mounted) {
+                    ref.read(authProvider.notifier).updateVip('active', result['expire_date']?.toString());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('🎉 激活成功！'),
+                        backgroundColor: AppTheme.successGreen,
+                      ),
+                    );
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('❌ ${result['error'] ?? '激活失败'}'),
+                        backgroundColor: AppTheme.errorRed,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ 网络错误: $e'),
+                      backgroundColor: AppTheme.errorRed,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('激活'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showKeyInputDialog(BuildContext ctx) {
+    final controller = TextEditingController();
+    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1A1D2E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.key_rounded, color: AppTheme.primaryBlue, size: 24),
+            const SizedBox(width: 8),
+            Text('DeepSeek 密钥', style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : AppTheme.textPrimary,
+            )),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _hasCustomKey ? '当前已配置密钥，输入新密钥替换' : '输入您的 DeepSeek API Key',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white54 : AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: 'sk-xxxxxxxxxx',
+                prefixIcon: const Icon(Icons.lock_rounded, size: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF242738) : const Color(0xFFF5F7FA),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (_hasCustomKey)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                // 清除密钥
+                try {
+                  final token = ref.read(authProvider).token ?? '';
+                  await ApiService.updateDeepseekKey(token, '');
+                  // 通过 WS 广播
+                  final ws = ref.read(wsServiceProvider);
+                  ws.sendUpdateKey('');
+                  if (mounted) {
+                    setState(() => _hasCustomKey = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('密钥已清除'), backgroundColor: Colors.orange),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('❌ 清除失败: $e'), backgroundColor: AppTheme.errorRed),
+                    );
+                  }
+                }
+              },
+              child: const Text('清除密钥', style: TextStyle(color: AppTheme.errorRed)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              final key = controller.text.trim();
+              if (key.isEmpty) return;
+              Navigator.pop(dialogCtx);
+
+              try {
+                final token = ref.read(authProvider).token ?? '';
+                await ApiService.updateDeepseekKey(token, key);
+                // 通过 WS 广播
+                final ws = ref.read(wsServiceProvider);
+                ws.sendUpdateKey(key);
+                if (mounted) {
+                  setState(() => _hasCustomKey = true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('✅ 密钥已保存并同步到所有设备'),
+                      backgroundColor: AppTheme.successGreen,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('❌ 保存失败: $e'), backgroundColor: AppTheme.errorRed),
+                  );
+                }
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext ctx, WidgetRef ref) {
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('确认退出'),
+        content: const Text('退出登录后需要重新登录才能使用全部功能'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              ref.read(authProvider.notifier).logout();
+            },
+            child: const Text('退出登录', style: TextStyle(color: AppTheme.errorRed)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAboutDialog(BuildContext ctx, AppLocalizations l) {
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.auto_awesome_rounded, color: AppTheme.primaryBlue),
+            const SizedBox(width: 8),
+            Text(l.appTitle),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('版本: v1.0.0'),
+            SizedBox(height: 8),
+            Text('任务精灵 — 手机遥控电脑'),
+            SizedBox(height: 4),
+            Text('远程 AI 助手 · 设备管理 · 任务自动化', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== UI 组件 =====
+
+  Widget _profileBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.9)),
       ),
     );
   }
@@ -296,11 +615,11 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String title, {String? trailing, bool isDark = false, Color? trailingColor}) {
+  Widget _buildMenuItem(IconData icon, String title, {String? trailing, bool isDark = false, Color? trailingColor, VoidCallback? onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap ?? () {},
         borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
@@ -339,39 +658,6 @@ class ProfilePage extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSwitchItem(IconData icon, String title, bool value, ValueChanged<bool> onChanged, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryBlue.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 20, color: AppTheme.primaryBlue),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: isDark ? const Color(0xDEFFFFFF) : AppTheme.textPrimary,
-              ),
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-          ),
-        ],
       ),
     );
   }

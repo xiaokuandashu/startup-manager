@@ -142,17 +142,52 @@ const mapToStartupTask = (task: AiTaskResult): StartupTask => {
   };
 };
 
-// Phase 2: JSON 容错解析器（处理本地小模型的格式错误）
+// Phase 2: JSON 容错解析器（处理本地小模型的多JSON拼接、<think>包裹等问题）
 function safeParseJSON(raw: string): Record<string, unknown> | null {
-  // 直接解析
-  try { return JSON.parse(raw); } catch {}
-  // 提取 JSON 块
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (match) { try { return JSON.parse(match[0]); } catch {} }
-  // 修复常见错误（末尾多余逗号）
+  // 0. 先去掉 <think>...</think> 标签内容（保留 JSON）
+  let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  if (!cleaned) cleaned = raw; // fallback
+
+  // 1. 直接解析
+  try { return JSON.parse(cleaned); } catch {}
+
+  // 2. 提取第一个完整 JSON 对象（非贪婪：寻找平衡的 {}）
+  const firstJson = extractFirstJSON(cleaned);
+  if (firstJson) {
+    try { return JSON.parse(firstJson); } catch {}
+    // 修复常见错误（末尾多余逗号）
+    const fixed = firstJson.replace(/,\s*([}\]])/g, '$1');
+    try { return JSON.parse(fixed); } catch {}
+  }
+
+  // 3. 旧方式兜底（贪婪匹配）
+  const match = cleaned.match(/\{[\s\S]*\}/);
   if (match) {
+    try { return JSON.parse(match[0]); } catch {}
     const fixed = match[0].replace(/,\s*([}\]])/g, '$1');
     try { return JSON.parse(fixed); } catch {}
+  }
+  return null;
+}
+
+// 从文本中提取第一个平衡的 JSON 对象
+function extractFirstJSON(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
   }
   return null;
 }
@@ -410,6 +445,9 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         setMessages(prev => prev.map(m =>
           m.id === loadingId ? { ...m, content: '🌐 智能搜索中...' } : m
         ));
+        // Bug fix: 本地模型 context 只有 2048 tokens，限制搜索结果长度
+        const isLocalModel = activeModel !== 'deepseek_cloud' && activeModel !== 'deepseek_user';
+        const maxSearchLen = isLocalModel ? 500 : 1500;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           const keywords = extractKeywords(text);
@@ -428,7 +466,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const cleaned = rawResult.trim().split('\n')
               .filter(line => line.trim().length > 5 && !adKeywords.some(k => line.includes(k)))
               .join('\n')
-              .substring(0, 1500);
+              .substring(0, maxSearchLen);
             aiInput = `[智能搜索结果]\n当前时间: ${timeStr}\n搜索内容:\n${cleaned}\n\n[用户问题] ${text}\n\n请结合以上最新搜索结果和你的知识回答用户问题。时间以"当前时间"为准。`;
           } else {
             aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
@@ -450,13 +488,18 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           ));
           try {
             const token = localStorage.getItem('token');
+            // Bug fix: 云端模型 + 深度思考 — 注入 <think> 指令
+            let cloudSystemPrompt = `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。`;
+            if (deepThinkEnabled) {
+              cloudSystemPrompt += `\n\n【深度思考模式】请先在<think>标签中详细展示你的推理过程，包括分析、思考、判断步骤，然后再给出最终回答。示例格式：\n<think>\n这里是你的思考过程...\n</think>\n最终回答内容`;
+            }
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({
                 model: activeModel,
                 messages: [
-                  { role: 'system', content: `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。` },
+                  { role: 'system', content: cloudSystemPrompt },
                   { role: 'user', content: aiInput }
                 ],
               }),
@@ -473,6 +516,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               const parsed = safeParseJSON(cleanJson);
               if (parsed && (parsed as any).message) {
                 response = parsed as unknown as AiResponse;
+                // 如果有 <think> 标签，保留到 message 中供前端展示
+                const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+                if (thinkMatch && response) {
+                  response.message = thinkMatch[0] + '\n' + response.message;
+                }
               } else {
                 response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
               }
@@ -515,10 +563,18 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             }
             if (inferResult) {
               const cleanJson = inferResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              // Bug fix: 保留 <think> 标签到最终 message 中
+              const thinkMatch = cleanJson.match(/<think>[\s\S]*?<\/think>/);
+              const thinkPart = thinkMatch ? thinkMatch[0] + '\n' : '';
               const parsed = safeParseJSON(cleanJson);
               if (parsed && (parsed as any).message) {
                 response = parsed as unknown as AiResponse;
+                // 重新附加思考过程（safeParseJSON 会去掉 <think>）
+                if (thinkPart && response) {
+                  response.message = thinkPart + response.message;
+                }
               } else {
+                // 如果无法解析为 JSON，直接作为文本展示（本地模型可能输出自然语言）
                 response = { message: cleanJson || inferResult, response_type: 'info', tasks: [] };
               }
             } else {
@@ -537,11 +593,15 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         response = { message: '🤔 未能理解你的请求，请换个方式试试。', response_type: 'info', tasks: [] };
       }
 
-      // 深度思考模型 fallback: 如果模型没返回 execute 但关键词检测到了命令，用检测到的命令
-      if (detectedCmd && response.response_type !== 'execute' && localExecEnabled) {
-        // 保留模型的回答（可能含 <think>），但追加执行
-        response.execute_command = detectedCmd;
-        response.response_type = 'execute';
+      // 深度思考模型 fallback: 仅在模型没给出有意义回答时才用 detectedCmd
+      // Bug fix: 不覆盖模型的有价值思考结果，只在模型返回 cloud_needed/error/空消息时 fallback
+      if (detectedCmd && localExecEnabled && response.response_type !== 'execute') {
+        const msgText = response.message.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const isEmptyOrUseless = !msgText || response.response_type === 'cloud_needed' || response.response_type === 'error';
+        if (isEmptyOrUseless) {
+          response.execute_command = detectedCmd;
+          response.response_type = 'execute';
+        }
       }
 
       // ========== 步骤3: 本地执行（当开关开启 + AI 返回 execute 类型）==========

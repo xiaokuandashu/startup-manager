@@ -1029,7 +1029,7 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
         for key in &["content", "text", "result", "response"] {
             if let Some(s) = v.get(*key).and_then(|v| v.as_str()) {
-                return Ok(s.to_string());
+                return Ok(cleanup_model_output(s));
             }
         }
     }
@@ -1040,4 +1040,49 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     }
 
     Err(format!("无法解析推理响应 ({}字节): {}", raw.len(), &raw[..raw.len().min(200)]))
+}
+
+/// 清理模型输出：处理多JSON拼接问题（本地小模型经常输出多个JSON对象）
+fn cleanup_model_output(text: &str) -> String {
+    let trimmed = text.trim();
+    // 尝试找到第一个完整的 JSON 对象
+    if let Some(start) = trimmed.find('{') {
+        let chars: Vec<char> = trimmed.chars().collect();
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escape = false;
+        for i in start..chars.len() {
+            let c = chars[i];
+            if escape { escape = false; continue; }
+            if c == '\\' && in_string { escape = true; continue; }
+            if c == '"' { in_string = !in_string; continue; }
+            if in_string { continue; }
+            if c == '{' { depth += 1; }
+            else if c == '}' {
+                depth -= 1;
+                if depth == 0 {
+                    // 保留 <think> 标签（如果在 JSON 之前）
+                    let prefix = &trimmed[..start];
+                    let think_part = if prefix.contains("<think>") {
+                        if let Some(end_tag) = prefix.find("</think>") {
+                            let end = end_tag + "</think>".len();
+                            &prefix[..end]
+                        } else {
+                            ""
+                        }
+                    } else {
+                        ""
+                    };
+                    let json_part: String = chars[start..=i].iter().collect();
+                    if think_part.is_empty() {
+                        return json_part;
+                    } else {
+                        return format!("{}\n{}", think_part, json_part);
+                    }
+                }
+            }
+        }
+    }
+    // 无法提取，返回原始文本
+    trimmed.to_string()
 }

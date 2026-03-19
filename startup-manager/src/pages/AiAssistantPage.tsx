@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StartupTask, TaskStep } from '../types';
 import { Language } from '../i18n';
-import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus } from 'lucide-react';
+import { ChevronDown, Send, Loader2, Globe, ClipboardList, Rocket, Calendar, CalendarDays, CheckCircle2, Clock, Lightbulb, Trash2, User, Bot, Smartphone, FileCode, FolderOpen, Brain, Cpu, Cloud, Ruler, Download, Link2, Play, Timer, Terminal, ArrowDown, ImagePlus, Sparkles } from 'lucide-react';
 
 interface AiTaskResult {
   task_name: string;
@@ -177,6 +177,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [openclawStatus, setOpenclawStatus] = useState<{installed: boolean; running: boolean; version: string}>({installed: false, running: false, version: ''});
   const [authConfirm, setAuthConfirm] = useState<{visible: boolean; prompt: string; level: string; confirmCount: number}>({visible: false, prompt: '', level: '', confirmCount: 0});
   const [webSearchEnabled, setWebSearchEnabled] = useState(() => localStorage.getItem('ai_web_search') === 'true');
+  const [deepThinkEnabled, setDeepThinkEnabled] = useState(() => localStorage.getItem('ai_deep_think') === 'true');
   const [localExecEnabled, setLocalExecEnabled] = useState(() => {
     const saved = localStorage.getItem('ai_local_exec');
     return saved === null ? true : saved === 'true'; // 默认开启
@@ -184,6 +185,22 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   const [thinkingExpanded, setThinkingExpanded] = useState(() => localStorage.getItem('ai_thinking_expanded') === 'true');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const placeholders = [
+    '试试: 今天有什么热点新闻',
+    '试试: 我的电脑是什么配置',
+    '试试: 每天8:20提醒我打卡',
+    '试试: 帮我打开微信',
+    '试试: 分析5G和6G技术的区别',
+  ];
+
+  // placeholder 轮播
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPlaceholderIdx(prev => (prev + 1) % placeholders.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 监听模型下载进度
   useEffect(() => {
@@ -356,9 +373,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         }},
       ];
 
-      // 深度思考模型列表（这些模型不跳过推理，以生成 <think> 标签）
-      const DEEP_THINKING_MODELS = ['deepseek-r1-1.5b', 'nanbeige-3b', 'phi4-mini', 'deepseek_cloud', 'deepseek_user'];
-      const isDeepThinkingModel = DEEP_THINKING_MODELS.includes(activeModel);
+      // 深度思考: 由用户开关控制（所有模型都支持）
+      const isDeepThinkingModel = deepThinkEnabled;
       let detectedCmd = ''; // 关键词检测到的命令（作为 hint 或 fallback）
 
       if (localExecEnabled && (window as any).__TAURI_INTERNALS__) {
@@ -373,39 +389,52 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         }
       }
 
-      // ========== 步骤1: 联网搜索（本地模型=curl搜索, 云端=注入时间）==========
+      // ========== 步骤1: 智能搜索（所有模型统一走 Bing 搜索）==========
       const now = new Date();
       const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
       const timeStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]} ${now.toLocaleTimeString('zh-CN')}`;
 
+      // 搜索关键词提取（去停用词，提取有意义的词）
+      const extractKeywords = (input: string): string => {
+        const stopWords = ['帮我','请问','请','告诉','什么','怎么','如何','能不能','可以','吗','呢','了','的','是','在','有','和','与','我','你','他','她','它','这','那','都','也','就','会','要','能','让','把','给','到','说','做','去','看','用','想'];
+        let kw = input;
+        stopWords.forEach(w => { kw = kw.split(w).join(' '); });
+        kw = kw.trim().replace(/\s+/g, ' ');
+        if (kw.length < 4) kw = input.substring(0, 30);
+        if (kw.length > 50) kw = kw.substring(0, 50);
+        return kw;
+      };
+
       if (webSearchEnabled && !response) {
-        if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
-          // DeepSeek 云端: 只注入时间到主调用（不额外消耗次数）
-          aiInput = `[当前时间: ${timeStr}]\n\n${text}\n\n请根据以上真实时间回答。`;
-        } else {
-          // 本地模型: 用 curl 抓取搜索结果（零 API 调用，不消耗云端次数）
-          setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: '🌐 联网搜索中...' } : m
-          ));
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const searchQuery = encodeURIComponent(text);
-            const scriptType = navigator.platform.includes('Mac') ? 'bash' : 'powershell';
-            const curlCmd = scriptType === 'bash'
-              ? `curl -sL "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -H "User-Agent: Mozilla/5.0" | sed 's/<[^>]*>//g' | tr -s ' ' | head -c 2000`
-              : `(Invoke-WebRequest -Uri "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -UseBasicParsing).Content -replace '<[^>]+>','' | ForEach-Object { $_.Substring(0, [Math]::Min($_.Length, 2000)) }`;
-            const searchResult = await invoke<string>('execute_script', {
-              scriptContent: curlCmd,
-              scriptType,
-            });
-            if (searchResult && searchResult.trim().length > 50) {
-              aiInput = `[联网搜索结果]\n当前时间: ${timeStr}\n搜索内容: ${searchResult.trim().substring(0, 1500)}\n\n[用户问题] ${text}\n\n请参考搜索结果回答用户问题。`;
-            } else {
-              aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
-            }
-          } catch {
+        // 所有模型统一: curl Bing 搜索
+        setMessages(prev => prev.map(m =>
+          m.id === loadingId ? { ...m, content: '🌐 智能搜索中...' } : m
+        ));
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const keywords = extractKeywords(text);
+          const searchQuery = encodeURIComponent(keywords);
+          const scriptType = navigator.platform.includes('Mac') ? 'bash' : 'powershell';
+          const curlCmd = scriptType === 'bash'
+            ? `curl -sL "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -H "User-Agent: Mozilla/5.0" | sed 's/<[^>]*>//g' | sed '/^[[:space:]]*$/d' | head -c 5000`
+            : `(Invoke-WebRequest -Uri "https://www.bing.com/search?q=${searchQuery}&setlang=zh-Hans" -UseBasicParsing).Content -replace '<[^>]+>','' -replace '\\s+','\n' | ForEach-Object { $_.Substring(0, [Math]::Min($_.Length, 5000)) }`;
+          const rawResult = await invoke<string>('execute_script', {
+            scriptContent: curlCmd,
+            scriptType,
+          });
+          if (rawResult && rawResult.trim().length > 50) {
+            // 去广告/导航噪音
+            const adKeywords = ['广告', '推广', 'Sponsored', 'Ad ', '登录', '注册', '下载App', '百度推广'];
+            const cleaned = rawResult.trim().split('\n')
+              .filter(line => line.trim().length > 5 && !adKeywords.some(k => line.includes(k)))
+              .join('\n')
+              .substring(0, 1500);
+            aiInput = `[智能搜索结果]\n当前时间: ${timeStr}\n搜索内容:\n${cleaned}\n\n[用户问题] ${text}\n\n请结合以上最新搜索结果和你的知识回答用户问题。时间以"当前时间"为准。`;
+          } else {
             aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
           }
+        } catch {
+          aiInput = `[当前时间: ${timeStr}]\n\n${text}`;
         }
       }
 
@@ -470,7 +499,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const RETRY_DELAY = 5000;
             for (let retry = 0; retry < MAX_RETRIES; retry++) {
               try {
-                inferResult = await invoke<string>('local_model_infer', { input: aiInput });
+                inferResult = await invoke<string>('local_model_infer', { input: aiInput, deepThink: deepThinkEnabled });
                 break;
               } catch (e) {
                 lastError = String(e);
@@ -713,6 +742,38 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         {/* 独立能力开关 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
+            onClick={() => { setDeepThinkEnabled(!deepThinkEnabled); localStorage.setItem('ai_deep_think', String(!deepThinkEnabled)); }}
+            title={deepThinkEnabled ? '深度思考已开启（点击关闭）' : '深度思考已关闭（点击开启）'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+              minWidth: 88, justifyContent: 'center',
+              background: deepThinkEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
+              color: deepThinkEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
+            }}
+          >
+            <Sparkles size={12} />
+            深度思考
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: deepThinkEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
+          </button>
+          <button
+            onClick={() => { setWebSearchEnabled(!webSearchEnabled); localStorage.setItem('ai_web_search', String(!webSearchEnabled)); }}
+            title={webSearchEnabled ? '智能搜索已开启（点击关闭）' : '智能搜索已关闭（点击开启）'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+              minWidth: 88, justifyContent: 'center',
+              background: webSearchEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
+              color: webSearchEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
+            }}
+          >
+            <Globe size={12} />
+            智能搜索
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: webSearchEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
+          </button>
+          <button
             onClick={() => { setLocalExecEnabled(!localExecEnabled); localStorage.setItem('ai_local_exec', String(!localExecEnabled)); }}
             title={localExecEnabled ? '本地执行已开启（点击关闭）' : '本地执行已关闭（点击开启）'}
             style={{
@@ -727,22 +788,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             <Terminal size={12} />
             本地执行
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: localExecEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
-          </button>
-          <button
-            onClick={() => { setWebSearchEnabled(!webSearchEnabled); localStorage.setItem('ai_web_search', String(!webSearchEnabled)); }}
-            title={webSearchEnabled ? '联网搜索已开启（点击关闭）' : '联网搜索已关闭（点击开启）'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-              minWidth: 88, justifyContent: 'center',
-              background: webSearchEnabled ? '#dcfce7' : 'var(--card-bg, #f3f4f6)',
-              color: webSearchEnabled ? '#166534' : 'var(--text-secondary, #9ca3af)',
-            }}
-          >
-            <Globe size={12} />
-            联网搜索
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: webSearchEnabled ? '#22c55e' : '#d1d5db', display: 'inline-block', marginLeft: 2, transition: 'background 0.2s' }} />
           </button>
         </div>
       </div>
@@ -1020,6 +1065,66 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
 
       {/* 消息列表 */}
       <div className="ai-messages">
+        {/* 空白态: 能力展示卡片 */}
+        {messages.length === 0 && (
+          <div className="ai-capability-section">
+            <div className="ai-capability-title">✨ 你的全能 AI 助手</div>
+            <div className="ai-capability-category">☁️ 在线能力</div>
+            <div className="ai-capability-grid">
+              <div className="ai-capability-card" onClick={() => { setInput('今天有什么热点新闻'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🌐</span>
+                <span className="ai-capability-name">智能搜索</span>
+                <span className="ai-capability-desc">实时新闻热点<br/>天气/股票/赛事</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('帮我写一封工作邮件'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">☁️</span>
+                <span className="ai-capability-name">DeepSeek</span>
+                <span className="ai-capability-desc">云端深度推理<br/>100次/天免费</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('用我的密钥分析这段代码'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🔑</span>
+                <span className="ai-capability-name">自有密钥</span>
+                <span className="ai-capability-desc">无限次数调用<br/>接入你的API</span>
+              </div>
+            </div>
+            <div className="ai-capability-category">🧠 本地 AI（离线可用·完全隐私）</div>
+            <div className="ai-capability-grid">
+              <div className="ai-capability-card" onClick={() => { setInput('分析一下5G和6G技术的区别'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🔮</span>
+                <span className="ai-capability-name">深度思考</span>
+                <span className="ai-capability-desc">展示完整推理链<br/>多模型可选</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('帮我整理一下个人计划'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">💬</span>
+                <span className="ai-capability-name">私密对话</span>
+                <span className="ai-capability-desc">零数据上传<br/>断网也能用</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('每天早上8:20提醒我打卡'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">📋</span>
+                <span className="ai-capability-name">智能任务</span>
+                <span className="ai-capability-desc">自动创建计划<br/>定时执行</span>
+              </div>
+            </div>
+            <div className="ai-capability-category">⚡ 本地自动化（你的电脑管家）</div>
+            <div className="ai-capability-grid">
+              <div className="ai-capability-card" onClick={() => { setInput('我的电脑是什么配置'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🖥️</span>
+                <span className="ai-capability-name">系统管理</span>
+                <span className="ai-capability-desc">查配置/清文件<br/>查进程/查网络</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('帮我打开微信'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🔓</span>
+                <span className="ai-capability-name">OpenClaw</span>
+                <span className="ai-capability-desc">一键打开App<br/>自动化工作流</span>
+              </div>
+              <div className="ai-capability-card" onClick={() => { setInput('打开浏览器搜索AI最新动态'); inputRef.current?.focus(); }}>
+                <span className="ai-capability-icon">🌍</span>
+                <span className="ai-capability-name">浏览器控制</span>
+                <span className="ai-capability-desc">自动填表单<br/>定时抓取网页</span>
+              </div>
+            </div>
+          </div>
+        )}
         {messages.map(msg => (
           <div key={msg.id} className={`ai-msg ai-msg-${msg.role}`}>
             <div className="ai-msg-avatar">
@@ -1043,30 +1148,19 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       return (
                         <>
                           {thinkContent && (
-                            <div style={{ marginBottom: 8 }}>
+                            <div className="ai-thinking-block" style={{ marginBottom: 10 }}>
                               <button
                                 onClick={() => {
                                   const next = !thinkingExpanded;
                                   setThinkingExpanded(next);
                                   localStorage.setItem('ai_thinking_expanded', String(next));
                                 }}
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: 4,
-                                  background: 'none', border: '1px solid var(--border-color, #e5e7eb)',
-                                  borderRadius: 8, padding: '4px 10px', fontSize: 11,
-                                  color: 'var(--text-secondary, #9ca3af)', cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                }}
+                                className="ai-thinking-header"
                               >
-                                💭 {thinkingExpanded ? '收起推理过程 ▲' : '查看推理过程 ▼'}
+                                🔄 已思考{(msg as any).thinkDuration ? `（用时 ${(msg as any).thinkDuration} 秒）` : ''} {thinkingExpanded ? '∨' : '›'}
                               </button>
                               {thinkingExpanded && (
-                                <div style={{
-                                  marginTop: 6, padding: '8px 12px', borderRadius: 8,
-                                  background: 'var(--hover-bg, #f8f9fa)', fontSize: 12,
-                                  color: 'var(--text-secondary, #6b7280)', lineHeight: 1.6,
-                                  borderLeft: '3px solid #d1d5db', whiteSpace: 'pre-wrap',
-                                }}>
+                                <div className="ai-thinking-content">
                                   {thinkContent}
                                 </div>
                               )}
@@ -1271,7 +1365,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           ref={inputRef}
           type="text"
           className="ai-input"
-          placeholder={lang === 'zh' ? '告诉我你想做什么...' : 'Tell me what you want to do...'}
+          placeholder={messages.length > 0 ? placeholders[placeholderIdx] : (lang === 'zh' ? '告诉我你想做什么...' : 'Tell me what you want to do...')}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

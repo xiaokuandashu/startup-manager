@@ -1421,8 +1421,8 @@ async fn download_engine(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn local_model_infer(input: String) -> Result<String, String> {
-    local_model::local_infer(&input).await
+async fn local_model_infer(input: String, deep_think: Option<bool>) -> Result<String, String> {
+    local_model::local_infer(&input, deep_think.unwrap_or(false)).await
 }
 
 // ======== 辅助功能 Tauri commands ========

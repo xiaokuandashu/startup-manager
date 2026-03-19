@@ -884,7 +884,7 @@ pub fn stop_engine() {
 }
 
 /// 使用内置引擎进行推理（兼容多种 llama-server 响应格式）
-pub async fn local_infer(user_input: &str) -> Result<String, String> {
+pub async fn local_infer(user_input: &str, deep_think: bool) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
@@ -969,6 +969,13 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
         _ => active_model.as_str(),
     };
     let system_prompt = system_prompt.replace("{model_name}", model_display_name);
+
+    // 深度思考: 追加推理指令
+    let system_prompt = if deep_think {
+        format!("{}\n\n【深度思考模式】请先在<think>标签中详细展示你的推理过程，包括分析、思考、判断步骤，然后再给出最终JSON回答。示例格式:\n<think>\n这里是你的思考过程...\n</think>\n{{\"message\":\"回答\",\"response_type\":\"info\",\"tasks\":[]}}", system_prompt)
+    } else {
+        system_prompt
+    };
 
     // 使用 /v1/chat/completions (服务器内置正确的 chat template，不需要手动格式化)
     let body = serde_json::json!({

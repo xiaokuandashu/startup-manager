@@ -970,9 +970,12 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     };
     let system_prompt = system_prompt.replace("{model_name}", model_display_name);
 
-    // 深度思考: 追加推理指令
+    // 深度思考: 替换"严格输出JSON"为思考先行指令，避免指令冲突
     let system_prompt = if deep_think {
-        format!("{}\n\n【深度思考模式】请先在<think>标签中详细展示你的推理过程，包括分析、思考、判断步骤，然后再给出最终JSON回答。示例格式:\n<think>\n这里是你的思考过程...\n</think>\n{{\"message\":\"回答\",\"response_type\":\"info\",\"tasks\":[]}}", system_prompt)
+        system_prompt.replace(
+            "严格输出JSON。",
+            "输出格式要求：必须先在<think>标签中写出详细的思考推理过程，然后再输出JSON。\n\n完整输出示例：\n<think>\n用户问了XX问题，我需要分析...\n首先考虑...\n然后判断...\n结论是...\n</think>\n{\"message\":\"最终回答\",\"response_type\":\"info\",\"tasks\":[]}\n\n注意：<think>标签是必须的，先思考再回答。"
+        )
     } else {
         system_prompt
     };

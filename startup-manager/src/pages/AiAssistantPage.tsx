@@ -477,6 +477,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       }
 
       // ========== 步骤2: AI 大脑推理（仅在未被预检测拦截时）==========
+      const thinkStartTime = Date.now(); // 记录思考开始时间
       if (!response && (window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
 
@@ -491,7 +492,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             // Bug fix: 云端模型 + 深度思考 — 注入 <think> 指令
             let cloudSystemPrompt = `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。`;
             if (deepThinkEnabled) {
-              cloudSystemPrompt += `\n\n【深度思考模式】请先在<think>标签中详细展示你的推理过程，包括分析、思考、判断步骤，然后再给出最终回答。示例格式：\n<think>\n这里是你的思考过程...\n</think>\n最终回答内容`;
+              cloudSystemPrompt += `\n\n【深度思考模式已开启】你必须按照以下格式回答：\n\n第一步：先在<think>标签中写出完整的推理思考过程\n第二步：在</think>标签后写出最终回答\n\n输出格式：\n<think>\n1. 分析用户问题：...\n2. 思考解答方向：...\n3. 组织回答内容：...\n</think>\n\n最终回答内容...\n\n注意：<think>标签是必须的，不可省略！`;
             }
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
@@ -657,6 +658,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       }
 
       // ========== 步骤4: 构建消息 ==========
+      const thinkDuration = Math.round((Date.now() - thinkStartTime) / 1000);
       const aiMsg: ChatMessage = {
         id: loadingId,
         role: 'ai',
@@ -666,6 +668,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         executedCommand: executedCommand || undefined,
         timestamp: Date.now(),
       };
+      (aiMsg as any).thinkDuration = thinkDuration;
       setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
 
     } catch {
@@ -1200,30 +1203,81 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                   <div className="ai-msg-text">
                     {(() => {
                       // 解析 <think>...</think> 标签（深度思考过程）
-                      const thinkMatch = msg.content.match(/<think>(.*?)<\/think>/s);
+                      const thinkMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/s);
                       const thinkContent = thinkMatch ? thinkMatch[1].trim() : '';
                       const mainContent = thinkMatch
-                        ? msg.content.replace(/<think>.*?<\/think>/s, '').trim()
+                        ? msg.content.replace(/<think>[\s\S]*?<\/think>/s, '').trim()
                         : msg.content;
+                      const duration = (msg as any).thinkDuration;
                       return (
                         <>
                           {thinkContent && (
-                            <div className="ai-thinking-block" style={{ marginBottom: 10 }}>
+                            <div style={{
+                              marginBottom: 12,
+                              borderRadius: 12,
+                              overflow: 'hidden',
+                              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                            }}>
                               <button
                                 onClick={() => {
                                   const next = !thinkingExpanded;
                                   setThinkingExpanded(next);
                                   localStorage.setItem('ai_thinking_expanded', String(next));
                                 }}
-                                className="ai-thinking-header"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  width: '100%',
+                                  padding: '10px 14px',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#a78bfa',
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
                               >
-                                🔄 已思考{(msg as any).thinkDuration ? `（用时 ${(msg as any).thinkDuration} 秒）` : ''} {thinkingExpanded ? '∨' : '›'}
+                                <Sparkles size={14} style={{ color: '#a78bfa' }} />
+                                <span>已思考</span>
+                                {duration ? <span style={{ color: '#7c3aed', fontSize: 12 }}>（用时 {duration} 秒）</span> : null}
+                                <span style={{
+                                  marginLeft: 'auto',
+                                  transition: 'transform 0.2s',
+                                  transform: thinkingExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                  fontSize: 12,
+                                  color: '#6366f1',
+                                }}>▼</span>
                               </button>
-                              {thinkingExpanded && (
-                                <div className="ai-thinking-content">
-                                  {thinkContent}
+                              <div style={{
+                                maxHeight: thinkingExpanded ? 400 : 0,
+                                overflow: 'hidden',
+                                transition: 'max-height 0.3s ease',
+                              }}>
+                                <div style={{
+                                  padding: '0 14px 14px',
+                                  fontSize: 12,
+                                  color: '#94a3b8',
+                                  lineHeight: 1.8,
+                                  whiteSpace: 'pre-wrap',
+                                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                                  paddingTop: 12,
+                                  maxHeight: 350,
+                                  overflowY: 'auto',
+                                }}>
+                                  {thinkContent.split('\n').map((line, i) => (
+                                    <div key={i} style={{
+                                      padding: '2px 0',
+                                      borderLeft: line.match(/^\d+\./) ? '2px solid #6366f1' : 'none',
+                                      paddingLeft: line.match(/^\d+\./) ? 8 : 0,
+                                      marginBottom: line.match(/^\d+\./) ? 4 : 0,
+                                    }}>{line}</div>
+                                  ))}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           )}
                           <div dangerouslySetInnerHTML={{

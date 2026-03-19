@@ -1616,8 +1616,16 @@ pub fn run() {
             browser_run_js,
             image_analyze,
             image_generate_caption,
-            start_device_heartbeat
+            start_device_heartbeat,
+            get_hostname
         ]);
+
+/// 获取设备 hostname — 用于 WS 中继 deviceId
+#[tauri::command]
+fn get_hostname() -> String {
+    use sysinfo::System;
+    System::host_name().unwrap_or_else(|| "unknown".to_string())
+}
 
 /// 设备心跳上报 — 前端登录后调用，每30秒上报系统信息到服务器
 #[tauri::command]

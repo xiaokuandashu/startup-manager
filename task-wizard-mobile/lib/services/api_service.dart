@@ -74,4 +74,40 @@ class ApiService {
     );
     return jsonDecode(resp.body);
   }
+
+  /// 获取 DeepSeek 使用量 → GET /deepseek/usage
+  /// 返回 {remaining, daily_limit, has_custom_key}
+  static Future<Map<String, dynamic>> getDeepseekUsage(String token) async {
+    final resp = await http.get(
+      Uri.parse('$_baseUrl/deepseek/usage'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return jsonDecode(resp.body);
+  }
+
+  /// 更新 DeepSeek 密钥 → POST /activation/profile/deepseek-key
+  static Future<Map<String, dynamic>> updateDeepseekKey(String token, String key) async {
+    final resp = await http.post(
+      Uri.parse('$_baseUrl/activation/profile/deepseek-key'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'deepseek_key': key}),
+    );
+    return jsonDecode(resp.body);
+  }
+
+  /// 激活码激活 → POST /activation/activate
+  static Future<Map<String, dynamic>> activateCode(String token, String code) async {
+    final resp = await http.post(
+      Uri.parse('$_baseUrl/activation/activate'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'code': code}),
+    );
+    return jsonDecode(resp.body);
+  }
 }

@@ -223,6 +223,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     return saved === null ? true : saved === 'true'; // 默认开启
   });
   const [thinkingExpanded, setThinkingExpanded] = useState<Record<number, boolean>>({});
+  const [thinkElapsed, setThinkElapsed] = useState(0); // 正在思考时的实时秒数
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
@@ -591,6 +592,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             // 监听完成
             const unlistenDone = await listen<{ duration: number }>('ai-stream-done', (e) => {
               const dur = e.payload?.duration ?? 0;
+              setThinkElapsed(0); // 重置实时计时
               setMessages(prev => prev.map(m =>
                 m.id === loadingId ? {
                   ...m,
@@ -606,8 +608,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               unlistenThink();
               unlistenContent();
               unlistenDone();
+              unlistenTick();
               setIsLoading(false);
               inputRef.current?.focus();
+            });
+
+            // 监听实时计时 tick
+            const unlistenTick = await listen<number>('ai-think-tick', (e) => {
+              setThinkElapsed(e.payload ?? 0);
             });
 
             // 监听错误（非SSE层面的错误）
@@ -1293,10 +1301,15 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     {(() => {
                       const thinkContent = msg.thinkContent ?? '';
                       const mainContent = msg.mainContent ?? (msg.thinkContent ? '' : msg.content);
-                      const duration = msg.thinkDuration;
+                      const duration = msg.thinkDuration; // kept for legacy messages
+                      void duration; // suppress unused warning in strict mode
                       const isExpanded = thinkingExpanded[msg.id] ?? false;
                       const answerVisible = msg.answerVisible ?? true;
-                      const isThinking = !!msg.loading;
+                      const isCurrentlyStreaming = isLoading && msg.id === Math.max(...messages.map(m => m.id));
+                      const displayDuration = msg.thinkDuration ?? (isCurrentlyStreaming ? thinkElapsed : 0);
+                      const durationLabel = isCurrentlyStreaming && !msg.thinkDuration
+                        ? `${thinkElapsed} 秒...`
+                        : (displayDuration > 0 ? `用时 ${displayDuration} 秒` : '');
 
                       return (
                         <>
@@ -1309,15 +1322,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                                 }
                                 className="ai-thinking-header"
                               >
-                                {isThinking
+                                {isCurrentlyStreaming
                                   ? <span className="ai-think-spinner" />
                                   : <Brain size={14} />
                                 }
-                                <span>{isThinking ? '深度思考中...' : '已思考'}</span>
-                                {!isThinking && duration
-                                  ? <span className="ai-thinking-duration">（用时 {duration} 秒）</span>
-                                  : null
-                                }
+                                <span>{isCurrentlyStreaming ? '深度思考中' : '已思考'}</span>
+                                {durationLabel && (
+                                  <span className="ai-thinking-duration">（{durationLabel}）</span>
+                                )}
                                 <span className={`ai-thinking-arrow ${isExpanded ? 'expanded' : ''}`}>▼</span>
                               </button>
                               <div className={`ai-thinking-body ${isExpanded ? 'expanded' : ''}`}>

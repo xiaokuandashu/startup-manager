@@ -907,18 +907,32 @@ pub async fn local_infer_stream(
     let active_model = model_id.unwrap_or_else(|| {
         ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default()
     });
+
+    // 为每个模型设置最小身份提示词，确保模型正确报告自己的名字
+    let model_display_name = match active_model.as_str() {
+        "deepseek-r1-1.5b" => "DeepSeek-R1 1.5B",
+        "nanbeige-3b"       => "Nanbeige 4.1 3B",
+        "phi4-mini"         => "Phi-4 Mini (Microsoft)",
+        other               => other,
+    };
+
     let is_r1 = active_model == "deepseek-r1-1.5b";
 
-    let system_prompt = if deep_think && is_r1 {
-        "你是任务精灵AI助手。请将思考过程写在 <think> 和 </think> 标签内，然后输出最终答案。".to_string()
+    let system_prompt = if is_r1 && deep_think {
+        format!(
+            "你是「任务精灵」AI助手，底层模型：{}。\
+请将思考过程写在 <think> 和 </think> 标签内，然后输出最终答案。",
+            model_display_name
+        )
     } else {
-        String::new()
+        format!(
+            "你是「任务精灵」AI助手，底层模型：{}。请直接回答用户问题。",
+            model_display_name
+        )
     };
 
     let mut messages = Vec::<serde_json::Value>::new();
-    if !system_prompt.is_empty() {
-        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
-    }
+    messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
     messages.push(serde_json::json!({ "role": "user", "content": user_input }));
 
     let body = serde_json::json!({
@@ -948,6 +962,20 @@ pub async fn local_infer_stream(
     let mut think_done = false;
     let start_time = std::time::Instant::now();
 
+    // 定时器：每秒发送一次 ai-think-tick 事件（前端用于实时计时）
+    let tick_app = app.clone();
+    let tick_start = start_time;
+    let done_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let done_flag_clone = done_flag.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            if done_flag_clone.load(std::sync::atomic::Ordering::Relaxed) { break; }
+            let elapsed = tick_start.elapsed().as_secs();
+            let _ = tick_app.emit("ai-think-tick", elapsed);
+        }
+    });
+
     while let Some(chunk) = byte_stream.next().await {
         let chunk = chunk.map_err(|e| format!("流式读取错误: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
@@ -960,6 +988,7 @@ pub async fn local_infer_stream(
             if !line.starts_with("data: ") { continue; }
             let data = &line[6..];
             if data == "[DONE]" {
+                done_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                 let duration_secs = start_time.elapsed().as_secs();
                 let _ = app.emit("ai-stream-done", serde_json::json!({ "duration": duration_secs }));
                 return Ok(());

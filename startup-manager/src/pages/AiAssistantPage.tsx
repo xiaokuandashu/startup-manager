@@ -559,15 +559,19 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             activeStreamCleanup.current.forEach(fn => fn());
             activeStreamCleanup.current = [];
 
-            // 建立占位消息（展开的思考块状态）
+            // 建立占位消息（根据深度思考开关决定初始状态）
             setMessages(prev => prev.map(m =>
               m.id === loadingId ? {
                 ...m, loading: false,
-                thinkContent: '', mainContent: '', answerVisible: false,
+                thinkContent: '', mainContent: '',
+                // 深度思考关闭时直接显示答案区，不等待思考块
+                answerVisible: !deepThinkEnabled,
                 thinkDuration: 0,
               } : m
             ));
-            setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+            if (deepThinkEnabled) {
+              setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+            }
             setThinkElapsed(0);
 
             let thinkBuf = '';

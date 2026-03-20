@@ -1019,20 +1019,30 @@ pub async fn local_infer_stream(
                 } else if let Some(content) = delta["content"].as_str() {
                     // 模式B: 整个输出在 content 中，用 <think> 标签区分思考和答案（R1 inline）
                     if !content.is_empty() {
-                        let content_str = content.to_string();
-                        if content_str.contains("<think>") {
-                            in_think = true;
-                        }
-                        if content_str.contains("</think>") {
-                            think_done = true;
-                            in_think = false;
-                        }
-                        let cleaned = content_str
-                            .replace("<think>", "").replace("</think>", "");
-                        if !cleaned.is_empty() {
-                            if in_think && !think_done {
-                                let _ = app.emit("ai-think-delta", cleaned.as_str());
-                            } else {
+                        if deep_think {
+                            // 深度思考开启：解析 <think> 标签并分流到思考块
+                            let content_str = content.to_string();
+                            if content_str.contains("<think>") {
+                                in_think = true;
+                            }
+                            if content_str.contains("</think>") {
+                                think_done = true;
+                                in_think = false;
+                            }
+                            let cleaned = content_str
+                                .replace("<think>", "").replace("</think>", "");
+                            if !cleaned.is_empty() {
+                                if in_think && !think_done {
+                                    let _ = app.emit("ai-think-delta", cleaned.as_str());
+                                } else {
+                                    let _ = app.emit("ai-content-delta", cleaned.as_str());
+                                }
+                            }
+                        } else {
+                            // 深度思考关闭：直接发送答案，净除任何 think 标签
+                            let cleaned = content
+                                .replace("<think>", "").replace("</think>", "");
+                            if !cleaned.is_empty() {
                                 let _ = app.emit("ai-content-delta", cleaned.as_str());
                             }
                         }

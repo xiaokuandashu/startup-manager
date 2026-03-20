@@ -27,9 +27,14 @@ interface ChatMessage {
   id: number;
   role: 'user' | 'ai';
   content: string;
+  // 深度思考分离字段
+  thinkContent?: string;   // 思考过程（<think>内容）
+  mainContent?: string;    // 最终答案
+  answerVisible?: boolean; // 控制答案淡入时机
+  thinkDuration?: number;  // 思考用时（秒）
   tasks?: AiTaskResult[];
   responseType?: string;
-  executedCommand?: string; // 记录执行过的命令，用于"存为任务"
+  executedCommand?: string;
   loading?: boolean;
   timestamp: number;
 }
@@ -662,23 +667,46 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         response.response_type = 'info';
       }
 
-      // ========== 步骤4: 构建消息 ==========
+      // ========== 步骤4: 构建消息 — 深度思考三状态 ==========
       const thinkDuration = Math.round((Date.now() - thinkStartTime) / 1000);
+
+      // 分离思考过程和最终答案
+      const rawContent = response.message;
+      const thinkMatch = rawContent.match(/<think>([\s\S]*?)<\/think>/s);
+      const thinkContent = thinkMatch ? thinkMatch[1].trim() : '';
+      const mainContent = thinkMatch
+        ? rawContent.replace(/<think>[\s\S]*?<\/think>/s, '').trim()
+        : rawContent;
+
       const aiMsg: ChatMessage = {
         id: loadingId,
         role: 'ai',
-        content: response.message,
+        content: rawContent,
+        thinkContent,
+        mainContent,
+        thinkDuration,
+        // 如果有思考内容，先不显示答案（等待动画）
+        answerVisible: !thinkContent,
         tasks: response.tasks,
         responseType: response.response_type,
         executedCommand: executedCommand || undefined,
         timestamp: Date.now(),
       };
-      (aiMsg as any).thinkDuration = thinkDuration;
+
+      // 先显示思考块（展开状态），答案暂时隐藏
       setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
-      // 新消息到达时，如果有思考内容则自动展开
-      const hasThinkContent = response.message.includes('<think>') && response.message.includes('</think>');
-      if (hasThinkContent) {
+
+      if (thinkContent) {
+        // 展开思考块
         setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+
+        // 800ms 后：折叠思考块 + 淡入答案
+        setTimeout(() => {
+          setMessages(prev => prev.map(m =>
+            m.id === loadingId ? { ...m, answerVisible: true } : m
+          ));
+          setThinkingExpanded(prev => ({ ...prev, [loadingId]: false }));
+        }, 800);
       }
 
     } catch {
@@ -1212,31 +1240,38 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 <>
                   <div className="ai-msg-text">
                     {(() => {
-                      // 解析 <think>...</think> 标签（深度思考过程）
-                      const thinkMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/s);
-                      const thinkContent = thinkMatch ? thinkMatch[1].trim() : '';
-                      const mainContent = thinkMatch
-                        ? msg.content.replace(/<think>[\s\S]*?<\/think>/s, '').trim()
-                        : msg.content;
-                      const duration = (msg as any).thinkDuration;
+                      const thinkContent = msg.thinkContent ?? '';
+                      const mainContent = msg.mainContent ?? (msg.thinkContent ? '' : msg.content);
+                      const duration = msg.thinkDuration;
                       const isExpanded = thinkingExpanded[msg.id] ?? false;
+                      const answerVisible = msg.answerVisible ?? true;
+                      const isThinking = !!msg.loading;
+
                       return (
                         <>
+                          {/* 深度思考块 */}
                           {thinkContent && (
                             <div className="ai-thinking-block">
                               <button
-                                onClick={() => {
-                                  setThinkingExpanded(prev => ({ ...prev, [msg.id]: !isExpanded }));
-                                }}
+                                onClick={() =>
+                                  setThinkingExpanded(prev => ({ ...prev, [msg.id]: !isExpanded }))
+                                }
                                 className="ai-thinking-header"
                               >
-                                <Brain size={14} />
-                                <span>已思考</span>
-                                {duration ? <span className="ai-thinking-duration">（用时 {duration} 秒）</span> : null}
+                                {isThinking
+                                  ? <span className="ai-think-spinner" />
+                                  : <Brain size={14} />
+                                }
+                                <span>{isThinking ? '深度思考中...' : '已思考'}</span>
+                                {!isThinking && duration
+                                  ? <span className="ai-thinking-duration">（用时 {duration} 秒）</span>
+                                  : null
+                                }
                                 <span className={`ai-thinking-arrow ${isExpanded ? 'expanded' : ''}`}>▼</span>
                               </button>
                               <div className={`ai-thinking-body ${isExpanded ? 'expanded' : ''}`}>
-                                <div className="ai-thinking-content"
+                                <div
+                                  className="ai-thinking-content"
                                   dangerouslySetInnerHTML={{
                                     __html: thinkContent
                                       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -1248,12 +1283,19 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                               </div>
                             </div>
                           )}
-                          <div dangerouslySetInnerHTML={{
-                            __html: mainContent
-                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                              .replace(/`(.*?)`/g, '<code>$1</code>')
-                              .replace(/\n/g, '<br/>')
-                          }} />
+
+                          {/* 最终答案 — 有思考内容时使用淡入动画 */}
+                          {mainContent && (
+                            <div
+                              className={thinkContent ? (answerVisible ? 'ai-answer-fadeIn' : 'ai-answer-hidden') : ''}
+                              dangerouslySetInnerHTML={{
+                                __html: mainContent
+                                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                  .replace(/`(.*?)`/g, '<code>$1</code>')
+                                  .replace(/\n/g, '<br/>')
+                              }}
+                            />
+                          )}
                         </>
                       );
                     })()}

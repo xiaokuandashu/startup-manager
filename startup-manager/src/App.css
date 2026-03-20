@@ -2289,6 +2289,36 @@ body {
 [data-theme="dark"] .ai-think-num { color: #a78bfa; }
 [data-theme="dark"] .ai-thinking-content::-webkit-scrollbar-thumb { background: #3a3a5a; }
 
+/* 深度思考 — 思考中旋转图标 */
+.ai-think-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #a78bfa44;
+  border-top-color: #7c3aed;
+  border-radius: 50%;
+  animation: thinkSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes thinkSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* 深度思考 — 答案淡入 */
+.ai-answer-hidden {
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+.ai-answer-fadeIn {
+  animation: answerFadeIn 0.5s ease forwards;
+}
+@keyframes answerFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ========================================
    能力展示卡片 (空白态)
    ======================================== */

@@ -865,19 +865,40 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     Err("引擎启动超时（30秒未响应）".to_string())
 }
 
-/// 停止 llama-server
+/// 停止 llama-server — 等待进程真正退出后才返回
 pub fn stop_engine() {
     if let Ok(mut pid_guard) = LLAMA_PID.lock() {
         if let Some(pid) = pid_guard.take() {
             #[cfg(not(target_os = "windows"))]
-            { let _ = Command::new("kill").arg(pid.to_string()).status(); }
+            {
+                // SIGTERM 优雅终止
+                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+                // 最多等 5 秒让进程自然退出
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    let still_alive = Command::new("kill")
+                        .args(["-0", &pid.to_string()])
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false);
+                    if !still_alive { break; }
+                    if std::time::Instant::now() > deadline {
+                        // 超时则强杀
+                        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        break;
+                    }
+                }
+            }
             #[cfg(target_os = "windows")]
             {
                 use std::os::windows::process::CommandExt;
                 let _ = Command::new("taskkill")
                     .args(["/PID", &pid.to_string(), "/F"])
-                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .creation_flags(0x08000000)
                     .status();
+                std::thread::sleep(std::time::Duration::from_millis(800));
             }
         }
     }
@@ -915,7 +936,7 @@ pub async fn local_infer(user_input: &str, deep_think: bool, model_id: Option<St
         _ => {}
     }
 
-    let system_prompt = "你是「任务精灵」，一个智能AI助手。底层模型是：{model_name}。";
+    let system_prompt = ""; // 无内置提示词，模型自由回答
 
     // 获取模型ID：优先使用前端传来的，如果为空则降级使用后端的全局状态
     let active_model = model_id.unwrap_or_else(|| {

@@ -968,18 +968,26 @@ pub async fn local_infer_stream(
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                 let delta = &json["choices"][0]["delta"];
 
-                // reasoning_content delta（Nanbeige、R1 等推理模型）
-                if let Some(rc) = delta["reasoning_content"].as_str() {
-                    if !rc.is_empty() {
-                        let _ = app.emit("ai-think-delta", rc);
-                        in_think = true;
-                    }
-                }
+                // 检查是否有 reasoning_content（Nanbeige / R1 等原生推理模型）
+                let has_reasoning_field = delta["reasoning_content"].is_string();
 
-                // content delta
-                if let Some(content) = delta["content"].as_str() {
+                if has_reasoning_field {
+                    // 模式A: reasoning_content 和 content 分开返回
+                    // reasoning_content → 思考过程
+                    if let Some(rc) = delta["reasoning_content"].as_str() {
+                        if !rc.is_empty() {
+                            let _ = app.emit("ai-think-delta", rc);
+                        }
+                    }
+                    // content → 直接是最终答案（不含 think 标签）
+                    if let Some(content) = delta["content"].as_str() {
+                        if !content.is_empty() {
+                            let _ = app.emit("ai-content-delta", content);
+                        }
+                    }
+                } else if let Some(content) = delta["content"].as_str() {
+                    // 模式B: 整个输出在 content 中，用 <think> 标签区分思考和答案（R1 inline）
                     if !content.is_empty() {
-                        // 检查是否是 <think> 标签 inline（R1 模型）
                         let content_str = content.to_string();
                         if content_str.contains("<think>") {
                             in_think = true;
@@ -988,19 +996,12 @@ pub async fn local_infer_stream(
                             think_done = true;
                             in_think = false;
                         }
-
-                        if in_think && !think_done {
-                            // 仍在思考阶段
-                            let cleaned = content_str
-                                .replace("<think>", "").replace("</think>", "");
-                            if !cleaned.is_empty() {
+                        let cleaned = content_str
+                            .replace("<think>", "").replace("</think>", "");
+                        if !cleaned.is_empty() {
+                            if in_think && !think_done {
                                 let _ = app.emit("ai-think-delta", cleaned.as_str());
-                            }
-                        } else {
-                            // 正式答案阶段
-                            let cleaned = content_str
-                                .replace("<think>", "").replace("</think>", "");
-                            if !cleaned.is_empty() {
+                            } else {
                                 let _ = app.emit("ai-content-delta", cleaned.as_str());
                             }
                         }

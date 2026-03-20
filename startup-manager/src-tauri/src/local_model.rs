@@ -1069,11 +1069,11 @@ async fn local_infer_two_step(
 ) -> Result<String, String> {
     let url = format!("http://{}:{}/v1/chat/completions", LLAMA_HOST, LLAMA_PORT);
 
-    // 步骤1: 分析阶段 — 让模型自由分析问题
+    // 步骤1: 分析阶段 — 让模型用自然语言分析问题
     let step1_body = serde_json::json!({
         "messages": [
             {"role": "system", "content": format!(
-                "你是{}。请分析以下用户输入，列出你的思考过程：\n1. 用户的意图是什么？\n2. 应该如何回应？\n3. 关键信息有哪些？\n\n只输出分析内容，不要输出JSON。",
+                "你是{}，请直接分析用户的问题，说说你的思考。不要输出JSON。",
                 model_name
             )},
             {"role": "user", "content": user_input}
@@ -1084,7 +1084,7 @@ async fn local_infer_two_step(
     });
 
     let step1_resp = client.post(&url).json(&step1_body).send().await
-        .map_err(|e| format!("步骤1推理失败: {}", e))?;
+        .map_err(|e| format!("深度思考步骤1失败: {}", e))?;
 
     let step1_raw = step1_resp.text().await.map_err(|e| format!("读取步骤1失败: {}", e))?;
 
@@ -1099,14 +1099,26 @@ async fn local_infer_two_step(
         String::new()
     };
 
+    // 如果分析为空，直接返回错误
+    if analysis.trim().is_empty() {
+        return Err("深度思考分析阶段未返回内容".to_string());
+    }
+
     // 步骤2: 回答阶段 — 基于分析生成最终回答
+    // 注意：不能用 "你的回答" 作为示例，小模型会直接复制
     let step2_body = serde_json::json!({
         "messages": [
             {"role": "system", "content": format!(
-                "你是「任务精灵」AI助手（{}）。根据你的分析结果，给出最终回答。\n输出JSON格式：\n{{\"message\":\"你的回答\",\"response_type\":\"info\",\"tasks\":[]}}\n严格输出JSON。",
+                "你是「任务精灵」AI助手（{}）。请根据分析结果回答用户问题。\n\
+                你必须输出如下JSON格式（把ANSWER替换为你的完整回答）：\n\
+                {{\"message\":\"ANSWER\",\"response_type\":\"info\",\"tasks\":[]}}\n\
+                只输出JSON，不要输出其他内容。",
                 model_name
             )},
-            {"role": "user", "content": format!("用户问题: {}\n\n我的分析: {}\n\n请基于以上分析给出最终回答（JSON格式）:", user_input, analysis)}
+            {"role": "user", "content": format!(
+                "问题：{}\n分析结果：{}\n\n请用JSON格式输出你的回答：",
+                user_input, analysis
+            )}
         ],
         "max_tokens": 1024,
         "temperature": 0.3,
@@ -1114,7 +1126,7 @@ async fn local_infer_two_step(
     });
 
     let step2_resp = client.post(&url).json(&step2_body).send().await
-        .map_err(|e| format!("步骤2推理失败: {}", e))?;
+        .map_err(|e| format!("深度思考步骤2失败: {}", e))?;
 
     let step2_raw = step2_resp.text().await.map_err(|e| format!("读取步骤2失败: {}", e))?;
 
@@ -1130,12 +1142,8 @@ async fn local_infer_two_step(
     };
 
     // 拼接为 <think>分析</think>\n回答
-    if analysis.is_empty() {
-        Ok(cleanup_model_output(&answer))
-    } else {
-        let combined = format!("<think>\n{}\n</think>\n{}", analysis.trim(), answer.trim());
-        Ok(combined)
-    }
+    let combined = format!("<think>\n{}\n</think>\n{}", analysis.trim(), cleanup_model_output(&answer));
+    Ok(combined)
 }
 
 /// 清理模型输出：处理多JSON拼接问题（本地小模型经常输出多个JSON对象）

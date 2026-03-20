@@ -517,16 +517,16 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           ));
           try {
             const token = localStorage.getItem('token');
-            // 深度思考时：系统提示词包含 <think> 指令（双保险：服务端切reasoner + 前端提示）
+            // 深度思考时：系统提示词引导模型输出 <think> 标签（不切换 reasoner 避免服务端超时）
             const cloudSystemPrompt = deepThinkEnabled
-              ? `你是「任务精灵」AI助手。当前时间: ${timeStr}。\n请在回答前进行深度思考，将思考过程写在 <think> 和 </think> 标签内，然后输出最终答案。`
+              ? `你是「任务精灵」AI助手。当前时间: ${timeStr}。\n请在回答前进行深度思考，将思考过程写在 <think> 和 </think> 标签内，最终给出简洁的答案。`
               : `你是「任务精灵」AI助手。当前时间: ${timeStr}。`;
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({
                 model: activeModel,
-                deep_think: deepThinkEnabled,  // 服务端根据此参数切换 deepseek-reasoner
+                // 不发 deep_think=true：避免服务端切换 deepseek-reasoner（非流式时会超时）
                 messages: [
                   { role: 'system', content: cloudSystemPrompt },
                   { role: 'user', content: aiInput }

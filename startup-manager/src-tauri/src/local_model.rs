@@ -981,13 +981,12 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
         return local_infer_two_step(&client, user_input, &system_prompt, model_display_name).await;
     }
 
-    // R1 + 深度思考: 移除严格 JSON 约束，让 R1 自由思考
+    // R1 + 深度思考: 使用特定的系统提示词强制 R1 遵循其原本的行为
     let system_prompt = if deep_think && is_r1 {
         format!(
-            "你是「任务精灵」AI助手。底层模型是 DeepSeek-R1 1.5B。\n\
-            请认真思考用户的问题，给出详细的回答。\n\
-            你可以自由使用<think>标签展示思考过程。\n\
-            回答时直接输出文字即可，不需要输出JSON格式。"
+            "你是「任务精灵」AI助手（DeepSeek-R1 1.5B）。\n\
+            请仔细分析用户的问题，你必须将思考过程写在 <think> 和 </think> 标签内，然后再输出最终答案。\n\
+            请不要输出 JSON，直接用文字回答即可。"
         )
     } else {
         system_prompt
@@ -1087,7 +1086,13 @@ async fn local_infer_two_step(
     });
 
     let step1_resp = client.post(&url).json(&step1_body).send().await
-        .map_err(|e| format!("深度思考步骤1失败: {}", e))?;
+        .map_err(|e| format!("深度思考步骤1请求失败: {}", e))?;
+
+    if !step1_resp.status().is_success() {
+        let status = step1_resp.status();
+        let err_body = step1_resp.text().await.unwrap_or_default();
+        return Err(format!("步骤1引擎返回错误 ({}): {}", status, &err_body[..err_body.len().min(200)]));
+    }
 
     let step1_raw = step1_resp.text().await.map_err(|e| format!("读取步骤1失败: {}", e))?;
 
@@ -1102,9 +1107,9 @@ async fn local_infer_two_step(
         String::new()
     };
 
-    // 如果分析为空，直接返回错误
+    // 如果分析为空，直接返回包含原始数据的错误以便调试
     if analysis.trim().is_empty() {
-        return Err("深度思考分析阶段未返回内容".to_string());
+        return Err(format!("深度思考分析阶段未返回内容，引擎响应：{}", &step1_raw[..step1_raw.len().min(300)]));
     }
 
     // 步骤2: 回答阶段 — 基于分析生成最终回答
@@ -1129,7 +1134,13 @@ async fn local_infer_two_step(
     });
 
     let step2_resp = client.post(&url).json(&step2_body).send().await
-        .map_err(|e| format!("深度思考步骤2失败: {}", e))?;
+        .map_err(|e| format!("深度思考步骤2请求失败: {}", e))?;
+
+    if !step2_resp.status().is_success() {
+        let status = step2_resp.status();
+        let err_body = step2_resp.text().await.unwrap_or_default();
+        return Err(format!("步骤2引擎返回错误 ({}): {}", status, &err_body[..err_body.len().min(200)]));
+    }
 
     let step2_raw = step2_resp.text().await.map_err(|e| format!("读取步骤2失败: {}", e))?;
 

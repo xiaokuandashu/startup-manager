@@ -2185,44 +2185,109 @@ body {
 [data-theme="dark"] .ai-msg-user .ai-msg-text { background: #1a3a5c; color: #e6edf3; }
 
 /* ========================================
-   思考过程折叠区 (DeepSeek 风格)
+   思考过程折叠区 — 参照 DeepSeek 风格
+   支持浅色/深色双主题
    ======================================== */
 .ai-thinking-block {
   border-radius: 10px;
   overflow: hidden;
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: #f0f4f8;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 10px;
 }
 .ai-thinking-header {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 14px;
+  padding: 10px 14px;
   background: none;
   border: none;
-  color: #a0a0c0;
-  font-size: 12px;
-  font-weight: 500;
+  color: #6366f1;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 .ai-thinking-header:hover {
-  background: rgba(255,255,255,0.05);
-  color: #c0c0e0;
+  background: rgba(99, 102, 241, 0.06);
+}
+.ai-thinking-header svg {
+  flex-shrink: 0;
+  color: #6366f1;
+}
+.ai-thinking-duration {
+  font-size: 12px;
+  color: #8b5cf6;
+  font-weight: 500;
+}
+.ai-thinking-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  color: #6366f1;
+  transition: transform 0.25s ease;
+}
+.ai-thinking-arrow.expanded {
+  transform: rotate(180deg);
+}
+.ai-thinking-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+.ai-thinking-body.expanded {
+  max-height: 500px;
 }
 .ai-thinking-content {
-  padding: 10px 14px 12px;
-  border-top: 1px solid #2a2a4a;
-  font-size: 12px;
-  color: #8888aa;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  max-height: 300px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12.5px;
+  color: #64748b;
+  line-height: 1.8;
+  max-height: 400px;
   overflow-y: auto;
 }
+.ai-thinking-content strong {
+  color: #475569;
+  font-weight: 600;
+}
+.ai-thinking-content code {
+  background: rgba(99, 102, 241, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  color: #6366f1;
+}
+.ai-think-num {
+  color: #6366f1;
+  font-weight: 700;
+  margin-right: 2px;
+}
 .ai-thinking-content::-webkit-scrollbar { width: 4px; }
-.ai-thinking-content::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+.ai-thinking-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+
+/* Dark mode */
+[data-theme="dark"] .ai-thinking-block {
+  background: linear-gradient(135deg, #1e1b2e 0%, #1a1f35 100%);
+  border-color: rgba(255,255,255,0.06);
+}
+[data-theme="dark"] .ai-thinking-header { color: #a78bfa; }
+[data-theme="dark"] .ai-thinking-header:hover { background: rgba(167, 139, 250, 0.06); }
+[data-theme="dark"] .ai-thinking-header svg { color: #a78bfa; }
+[data-theme="dark"] .ai-thinking-duration { color: #7c3aed; }
+[data-theme="dark"] .ai-thinking-arrow { color: #a78bfa; }
+[data-theme="dark"] .ai-thinking-content {
+  border-color: rgba(255,255,255,0.06);
+  color: #94a3b8;
+}
+[data-theme="dark"] .ai-thinking-content strong { color: #e2e8f0; }
+[data-theme="dark"] .ai-thinking-content code {
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+}
+[data-theme="dark"] .ai-think-num { color: #a78bfa; }
+[data-theme="dark"] .ai-thinking-content::-webkit-scrollbar-thumb { background: #3a3a5a; }
 
 /* ========================================
    能力展示卡片 (空白态)
@@ -2289,10 +2354,7 @@ body {
 }
 
 /* Dark mode */
-[data-theme="dark"] .ai-thinking-block { background: #0d1117; border-color: #21262d; }
-[data-theme="dark"] .ai-thinking-header { color: #768390; }
-[data-theme="dark"] .ai-thinking-header:hover { background: rgba(255,255,255,0.03); color: #adbac7; }
-[data-theme="dark"] .ai-thinking-content { border-color: #21262d; color: #636e7b; }
+/* (thinking dark mode styles are now defined inline with the component above) */
 [data-theme="dark"] .ai-capability-card { background: #2d333b; border-color: #444c56; }
 [data-theme="dark"] .ai-capability-card:hover { border-color: #388bfd; background: rgba(56,139,253,0.08); }
 [data-theme="dark"] .ai-capability-name { color: #adbac7; }

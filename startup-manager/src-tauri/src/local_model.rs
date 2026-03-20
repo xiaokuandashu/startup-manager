@@ -978,8 +978,20 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
         return local_infer_two_step(&client, user_input, &system_prompt, model_display_name).await;
     }
 
-    // 正常推理（R1 模型自动输出 <think>，其他模型正常 JSON）
+    // R1 + 深度思考: 移除严格 JSON 约束，让 R1 自由思考
+    let system_prompt = if deep_think && is_r1 {
+        format!(
+            "你是「任务精灵」AI助手。底层模型是 DeepSeek-R1 1.5B。\n\
+            请认真思考用户的问题，给出详细的回答。\n\
+            你可以自由使用<think>标签展示思考过程。\n\
+            回答时直接输出文字即可，不需要输出JSON格式。"
+        )
+    } else {
+        system_prompt
+    };
+
     let max_tokens = if deep_think && is_r1 { 4096 } else { 2048 };
+    let temperature = if deep_think && is_r1 { 0.1 } else { 0.3 };
 
     let body = serde_json::json!({
         "messages": [
@@ -987,7 +999,7 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
             {"role": "user", "content": user_input}
         ],
         "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "temperature": temperature,
         "stream": false,
     });
 

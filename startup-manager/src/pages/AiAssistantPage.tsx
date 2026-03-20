@@ -1213,71 +1213,30 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                       return (
                         <>
                           {thinkContent && (
-                            <div style={{
-                              marginBottom: 12,
-                              borderRadius: 12,
-                              overflow: 'hidden',
-                              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                            }}>
+                            <div className="ai-thinking-block">
                               <button
                                 onClick={() => {
                                   const next = !thinkingExpanded;
                                   setThinkingExpanded(next);
                                   localStorage.setItem('ai_thinking_expanded', String(next));
                                 }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  width: '100%',
-                                  padding: '10px 14px',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#a78bfa',
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                }}
+                                className="ai-thinking-header"
                               >
-                                <Sparkles size={14} style={{ color: '#a78bfa' }} />
+                                <Brain size={14} />
                                 <span>已思考</span>
-                                {duration ? <span style={{ color: '#7c3aed', fontSize: 12 }}>（用时 {duration} 秒）</span> : null}
-                                <span style={{
-                                  marginLeft: 'auto',
-                                  transition: 'transform 0.2s',
-                                  transform: thinkingExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                  fontSize: 12,
-                                  color: '#6366f1',
-                                }}>▼</span>
+                                {duration ? <span className="ai-thinking-duration">（用时 {duration} 秒）</span> : null}
+                                <span className={`ai-thinking-arrow ${thinkingExpanded ? 'expanded' : ''}`}>▼</span>
                               </button>
-                              <div style={{
-                                maxHeight: thinkingExpanded ? 400 : 0,
-                                overflow: 'hidden',
-                                transition: 'max-height 0.3s ease',
-                              }}>
-                                <div style={{
-                                  padding: '0 14px 14px',
-                                  fontSize: 12,
-                                  color: '#94a3b8',
-                                  lineHeight: 1.8,
-                                  whiteSpace: 'pre-wrap',
-                                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                                  paddingTop: 12,
-                                  maxHeight: 350,
-                                  overflowY: 'auto',
-                                }}>
-                                  {thinkContent.split('\n').map((line, i) => (
-                                    <div key={i} style={{
-                                      padding: '2px 0',
-                                      borderLeft: line.match(/^\d+\./) ? '2px solid #6366f1' : 'none',
-                                      paddingLeft: line.match(/^\d+\./) ? 8 : 0,
-                                      marginBottom: line.match(/^\d+\./) ? 4 : 0,
-                                    }}>{line}</div>
-                                  ))}
-                                </div>
+                              <div className={`ai-thinking-body ${thinkingExpanded ? 'expanded' : ''}`}>
+                                <div className="ai-thinking-content"
+                                  dangerouslySetInnerHTML={{
+                                    __html: thinkContent
+                                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                      .replace(/`(.*?)`/g, '<code>$1</code>')
+                                      .replace(/^\s*(\d+)\.\s+/gm, '<span class="ai-think-num">$1.</span> ')
+                                      .replace(/\n/g, '<br/>')
+                                  }}
+                                />
                               </div>
                             </div>
                           )}

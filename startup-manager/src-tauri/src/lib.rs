@@ -1435,6 +1435,11 @@ async fn local_model_infer_stream(
     local_model::local_infer_stream(&input, deep_think.unwrap_or(false), model_id, &app).await
 }
 
+#[tauri::command]
+fn cancel_local_stream() {
+    local_model::cancel_stream();
+}
+
 // ======== 辅助功能 Tauri commands ========
 
 #[tauri::command]
@@ -1617,6 +1622,7 @@ pub fn run() {
             download_engine,
             local_model_infer,
             local_model_infer_stream,
+            cancel_local_stream,
             ax_get_window,
             ax_check_permission,
             marketplace_browse,

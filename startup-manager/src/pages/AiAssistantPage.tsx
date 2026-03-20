@@ -373,6 +373,25 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  /** 取消当前流式推理并重置状态 */
+  const stopStream = async () => {
+    try {
+      if ((window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('cancel_local_stream');
+      }
+    } catch {}
+    activeStreamCleanup.current.forEach(fn => fn());
+    activeStreamCleanup.current = [];
+    setIsLoading(false);
+    setThinkElapsed(0);
+    // 标记当前危载中的消息为已取消
+    setMessages(prev => prev.map(m =>
+      m.loading ? { ...m, loading: false, answerVisible: true,
+        mainContent: m.mainContent || '\u274c 已取消' } : m
+    ));
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -1309,7 +1328,18 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 <div className="ai-typing">
                   <span></span><span></span><span></span>
                 </div>
-              ) : (
+              ) : (() => {
+                // 流式进行中且无内容时显示打字气泡动画
+                const isCurrentlyStreaming = isLoading && msg.id === Math.max(...messages.map(m => m.id));
+                const hasNoContent = !msg.mainContent && !msg.thinkContent;
+                if (isCurrentlyStreaming && hasNoContent) {
+                  return (
+                    <div className="ai-typing-bubble">
+                      <span></span><span></span><span></span>
+                    </div>
+                  );
+                }
+                return (
                 <>
                   <div className="ai-msg-text">
                     {(() => {
@@ -1513,7 +1543,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                     </div>
                   )}
                 </>
-              )}
+              );
+              })()}
             </div>
           </div>
         ))}
@@ -1573,12 +1604,14 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           disabled={isLoading}
         />
         <button
-          className="ai-btn-send"
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading}
+          className={isLoading ? 'ai-btn-stop' : 'ai-btn-send'}
+          onClick={isLoading ? stopStream : handleSend}
+          disabled={isLoading ? false : !input.trim()}
         >
           {isLoading ? (
-            <Loader2 size={20} className="ai-send-loading" />
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
           ) : (
             <Send size={20} />
           )}

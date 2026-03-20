@@ -1,7 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
+
+/// 流式推理取消标志
+static STREAM_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// 取消当前流式推理
+pub fn cancel_stream() {
+    STREAM_CANCELLED.store(true, Ordering::Relaxed);
+}
 
 /// llama-server 配置
 const LLAMA_PORT: u16 = 8089;
@@ -962,6 +971,9 @@ pub async fn local_infer_stream(
     let mut think_done = false;
     let start_time = std::time::Instant::now();
 
+    // 重置取消标志
+    STREAM_CANCELLED.store(false, Ordering::Relaxed);
+
     // 定时器：每秒发送一次 ai-think-tick 事件（前端用于实时计时）
     let tick_app = app.clone();
     let tick_start = start_time;
@@ -987,6 +999,15 @@ pub async fn local_infer_stream(
 
             if !line.starts_with("data: ") { continue; }
             let data = &line[6..];
+
+            // 检查取消标志
+            if STREAM_CANCELLED.load(Ordering::Relaxed) {
+                STREAM_CANCELLED.store(false, Ordering::Relaxed);
+                let duration_secs = start_time.elapsed().as_secs();
+                let _ = app.emit("ai-stream-done", serde_json::json!({ "duration": duration_secs, "cancelled": true }));
+                return Ok(());
+            }
+
             if data == "[DONE]" {
                 done_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                 let duration_secs = start_time.elapsed().as_secs();

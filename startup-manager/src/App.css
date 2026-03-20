@@ -2128,6 +2128,56 @@ body {
   100% { transform: rotate(360deg); }
 }
 
+/* 停止按钮 — 推理进行中替代发送按钮 */
+.ai-btn-stop {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  animation: stopPulse 1.5s ease-in-out infinite;
+}
+.ai-btn-stop:hover { background: #dc2626; transform: scale(1.05); }
+@keyframes stopPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+}
+
+/* 打字气泡动画 — 未开启深度思考时等待回复 */
+.ai-typing-bubble {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 18px;
+  background: var(--bg-card, #f3f4f6);
+  border-radius: 16px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  width: fit-content;
+}
+.ai-typing-bubble span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+  display: inline-block;
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+.ai-typing-bubble span:nth-child(2) { animation-delay: 0.2s; background: #818cf8; }
+.ai-typing-bubble span:nth-child(3) { animation-delay: 0.4s; background: #a5b4fc; }
+@keyframes dotBounce {
+  0%,80%,100% { transform: translateY(0); opacity: 0.6; }
+  40% { transform: translateY(-7px); opacity: 1; }
+}
+
+[data-theme="dark"] .ai-btn-stop { background: #b91c1c; }
+[data-theme="dark"] .ai-btn-stop:hover { background: #991b1b; }
+[data-theme="dark"] .ai-typing-bubble { background: var(--bg-card); border-color: var(--border-color); }
+
 /* Dark mode adjustments */
 [data-theme="dark"] .ai-msg-ai .ai-msg-text {
   background: var(--bg-card);

@@ -970,23 +970,23 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     };
     let system_prompt = system_prompt.replace("{model_name}", model_display_name);
 
-    // 深度思考: 替换"严格输出JSON"为思考先行指令，避免指令冲突
-    let system_prompt = if deep_think {
-        system_prompt.replace(
-            "严格输出JSON。",
-            "输出格式要求：必须先在<think>标签中写出详细的思考推理过程，然后再输出JSON。\n\n完整输出示例：\n<think>\n用户问了XX问题，我需要分析...\n首先考虑...\n然后判断...\n结论是...\n</think>\n{\"message\":\"最终回答\",\"response_type\":\"info\",\"tasks\":[]}\n\n注意：<think>标签是必须的，先思考再回答。"
-        )
-    } else {
-        system_prompt
-    };
+    // DeepSeek-R1 是原生推理模型，自动输出 <think> 标签，不需要修改 prompt
+    let is_r1 = active_model == "deepseek-r1-1.5b";
 
-    // 使用 /v1/chat/completions (服务器内置正确的 chat template，不需要手动格式化)
+    // 非 R1 模型 + 深度思考: 用两步模拟
+    if deep_think && !is_r1 {
+        return local_infer_two_step(&client, user_input, &system_prompt, model_display_name).await;
+    }
+
+    // 正常推理（R1 模型自动输出 <think>，其他模型正常 JSON）
+    let max_tokens = if deep_think && is_r1 { 4096 } else { 2048 };
+
     let body = serde_json::json!({
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input}
         ],
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "temperature": 0.3,
         "stream": false,
     });
@@ -1043,6 +1043,87 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     }
 
     Err(format!("无法解析推理响应 ({}字节): {}", raw.len(), &raw[..raw.len().min(200)]))
+}
+
+/// 两步推理模拟深度思考（用于非 DeepSeek-R1 的本地模型）
+/// 步骤1: 让模型分析问题（自然语言输出）
+/// 步骤2: 基于分析给出最终回答（JSON 输出）
+/// 拼接为: <think>分析</think>\nJSON回答
+async fn local_infer_two_step(
+    client: &reqwest::Client,
+    user_input: &str,
+    _system_prompt: &str,
+    model_name: &str,
+) -> Result<String, String> {
+    let url = format!("http://{}:{}/v1/chat/completions", LLAMA_HOST, LLAMA_PORT);
+
+    // 步骤1: 分析阶段 — 让模型自由分析问题
+    let step1_body = serde_json::json!({
+        "messages": [
+            {"role": "system", "content": format!(
+                "你是{}。请分析以下用户输入，列出你的思考过程：\n1. 用户的意图是什么？\n2. 应该如何回应？\n3. 关键信息有哪些？\n\n只输出分析内容，不要输出JSON。",
+                model_name
+            )},
+            {"role": "user", "content": user_input}
+        ],
+        "max_tokens": 512,
+        "temperature": 0.5,
+        "stream": false,
+    });
+
+    let step1_resp = client.post(&url).json(&step1_body).send().await
+        .map_err(|e| format!("步骤1推理失败: {}", e))?;
+
+    let step1_raw = step1_resp.text().await.map_err(|e| format!("读取步骤1失败: {}", e))?;
+
+    // 提取步骤1的分析内容
+    let analysis = if let Ok(r) = serde_json::from_str::<LlamaChoiceResponse>(&step1_raw) {
+        r.choices.first()
+            .and_then(|c| c.message.as_ref().map(|m| m.content.clone()).or(c.text.clone()))
+            .unwrap_or_default()
+    } else if let Ok(r) = serde_json::from_str::<LlamaResponse>(&step1_raw) {
+        r.content.unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // 步骤2: 回答阶段 — 基于分析生成最终回答
+    let step2_body = serde_json::json!({
+        "messages": [
+            {"role": "system", "content": format!(
+                "你是「任务精灵」AI助手（{}）。根据你的分析结果，给出最终回答。\n输出JSON格式：\n{{\"message\":\"你的回答\",\"response_type\":\"info\",\"tasks\":[]}}\n严格输出JSON。",
+                model_name
+            )},
+            {"role": "user", "content": format!("用户问题: {}\n\n我的分析: {}\n\n请基于以上分析给出最终回答（JSON格式）:", user_input, analysis)}
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.3,
+        "stream": false,
+    });
+
+    let step2_resp = client.post(&url).json(&step2_body).send().await
+        .map_err(|e| format!("步骤2推理失败: {}", e))?;
+
+    let step2_raw = step2_resp.text().await.map_err(|e| format!("读取步骤2失败: {}", e))?;
+
+    // 提取步骤2的回答
+    let answer = if let Ok(r) = serde_json::from_str::<LlamaChoiceResponse>(&step2_raw) {
+        r.choices.first()
+            .and_then(|c| c.message.as_ref().map(|m| m.content.clone()).or(c.text.clone()))
+            .unwrap_or_default()
+    } else if let Ok(r) = serde_json::from_str::<LlamaResponse>(&step2_raw) {
+        r.content.unwrap_or_default()
+    } else {
+        step2_raw.clone()
+    };
+
+    // 拼接为 <think>分析</think>\n回答
+    if analysis.is_empty() {
+        Ok(cleanup_model_output(&answer))
+    } else {
+        let combined = format!("<think>\n{}\n</think>\n{}", analysis.trim(), answer.trim());
+        Ok(combined)
+    }
 }
 
 /// 清理模型输出：处理多JSON拼接问题（本地小模型经常输出多个JSON对象）

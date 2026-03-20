@@ -147,7 +147,7 @@ app.get('/api/deepseek/usage', authMiddleware, (req: any, res) => {
 
 app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
   const userId = req.userId;
-  const { messages, model } = req.body;
+  const { messages, model, deep_think } = req.body;
   const db = require('./db').getDB();
 
   // 获取用户自定义 key
@@ -184,9 +184,7 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
 
     // 检查每日限额 (云端强制计费)
     const dailyLimit = parseInt(config.deepseek_daily_limit || '100');
-    // 根据需求修正：如果是服务器在中国东八区时间为准
     const now = new Date();
-    // 换算成中国东八区时间 (UTC+8)
     const utc8Date = new Date(now.getTime() + (8 * 60 * 60 * 1000));
     const today = utc8Date.toISOString().split('T')[0];
     
@@ -202,6 +200,10 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
     }
   }
 
+  // 深度思考模式: 切换到 deepseek-reasoner 模型
+  const actualModel = deep_think ? 'deepseek-reasoner' : modelName;
+  console.log(`[DeepSeek] 模型=${actualModel} deep_think=${!!deep_think} user=${userId}`);
+
   try {
     // 调用 DeepSeek API
     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -211,10 +213,10 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: modelName,
+        model: actualModel,
         messages: messages || [{ role: 'user', content: req.body.input || '' }],
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: deep_think ? undefined : 0.7,  // reasoner 不支持 temperature
+        max_tokens: deep_think ? 8192 : 2048,        // 思考需要更多 token
       }),
     });
 
@@ -233,16 +235,25 @@ app.post('/api/deepseek/chat', authMiddleware, async (req: any, res) => {
             : "官方云端额度不足或请求受限，请联系管理员";
       }
 
-      // 避免转发 401 干扰前端的 JWT Auth 解析，使用 502 (Bad Gateway)
       return res.status(502).json({ error: friendlyError });
     }
 
     const data = await response.json() as any;
 
+    // 深度思考: 提取 reasoning_content → 拼接为 <think>...</think> + content
+    if (deep_think && data.choices?.[0]?.message) {
+      const msg = data.choices[0].message;
+      const reasoning = msg.reasoning_content || '';
+      const content = msg.content || '';
+      if (reasoning) {
+        msg.content = `<think>\n${reasoning}\n</think>\n${content}`;
+        console.log(`[DeepSeek] 深度思考: reasoning=${reasoning.length}字 content=${content.length}字`);
+      }
+    }
+
     // 记录调用次数（使用官方云端 key 时计数，使用自有key不计数）
     if (model !== 'deepseek_user') {
       try {
-        // 使用东八区时间记录
         const offset = 8 * 60 * 60 * 1000;
         const now = new Date(Date.now() + offset);
         const today = now.toISOString().split('T')[0];

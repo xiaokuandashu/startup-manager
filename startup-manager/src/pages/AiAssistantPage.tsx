@@ -485,20 +485,18 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           // DeepSeek 云端
           const modelLabel = activeModel === 'deepseek_user' ? '🔑 您的密钥' : '☁️ DeepSeek 云端';
           setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: `${modelLabel} 思考中...` } : m
+            m.id === loadingId ? { ...m, content: deepThinkEnabled ? `${modelLabel} 深度思考中...` : `${modelLabel} 思考中...` } : m
           ));
           try {
             const token = localStorage.getItem('token');
-            // Bug fix: 云端模型 + 深度思考 — 注入 <think> 指令
-            let cloudSystemPrompt = `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。`;
-            if (deepThinkEnabled) {
-              cloudSystemPrompt += `\n\n【深度思考模式已开启】你必须按照以下格式回答：\n\n第一步：先在<think>标签中写出完整的推理思考过程\n第二步：在</think>标签后写出最终回答\n\n输出格式：\n<think>\n1. 分析用户问题：...\n2. 思考解答方向：...\n3. 组织回答内容：...\n</think>\n\n最终回答内容...\n\n注意：<think>标签是必须的，不可省略！`;
-            }
+            // 系统提示 — 不再注入 <think> 指令，由服务端切换 deepseek-reasoner 模型实现
+            const cloudSystemPrompt = `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。`;
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({
                 model: activeModel,
+                deep_think: deepThinkEnabled,  // 服务端根据此参数切换 deepseek-reasoner
                 messages: [
                   { role: 'system', content: cloudSystemPrompt },
                   { role: 'user', content: aiInput }
@@ -513,17 +511,20 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             } else if (proxyRes.ok) {
               const data = await proxyRes.json();
               const content = data.choices?.[0]?.message?.content || '';
+              // 尝试解析 JSON（非深度思考时模型可能返回 JSON）
               const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              const parsed = safeParseJSON(cleanJson);
-              if (parsed && (parsed as any).message) {
-                response = parsed as unknown as AiResponse;
-                // 如果有 <think> 标签，保留到 message 中供前端展示
-                const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
-                if (thinkMatch && response) {
-                  response.message = thinkMatch[0] + '\n' + response.message;
-                }
+              // 检查是否有 <think> 标签（深度思考模式下服务端会拼接）
+              const hasThinkTags = cleanJson.includes('<think>') && cleanJson.includes('</think>');
+              if (hasThinkTags) {
+                // 深度思考模式: 保留完整内容（含 <think> 标签），前端 UI 会解析展示
+                response = { message: cleanJson, response_type: 'info', tasks: [] };
               } else {
-                response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
+                const parsed = safeParseJSON(cleanJson);
+                if (parsed && (parsed as any).message) {
+                  response = parsed as unknown as AiResponse;
+                } else {
+                  response = { message: content || 'DeepSeek 返回了空响应', response_type: 'info', tasks: [] };
+                }
               }
               if (activeModel === 'deepseek_cloud') {
                 setDeepseekUsage(prev => ({ ...prev, remaining: Math.max(0, (prev.remaining ?? 100) - 1) }));

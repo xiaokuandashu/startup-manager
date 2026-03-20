@@ -224,6 +224,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
   });
   const [thinkingExpanded, setThinkingExpanded] = useState<Record<number, boolean>>({});
   const [thinkElapsed, setThinkElapsed] = useState(0); // 正在思考时的实时秒数
+  /** 当前活跃的 Tauri 事件取消监听函数 — 切换模型/新发消息时强制清理 */
+  const activeStreamCleanup = useRef<Array<() => void>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
@@ -551,7 +553,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const { invoke } = await import('@tauri-apps/api/core');
             const { listen } = await import('@tauri-apps/api/event');
 
-            // 先建立占位消息（展开的思考块状态）
+            // 强制清理上一个请求的所有监听器（防止内容加入错误消息）
+            activeStreamCleanup.current.forEach(fn => fn());
+            activeStreamCleanup.current = [];
+
+            // 建立占位消息（展开的思考块状态）
             setMessages(prev => prev.map(m =>
               m.id === loadingId ? {
                 ...m, loading: false,
@@ -560,6 +566,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               } : m
             ));
             setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+            setThinkElapsed(0);
 
             let thinkBuf = '';
             let answerBuf = '';
@@ -572,6 +579,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                 m.id === loadingId ? { ...m, thinkContent: thinkBuf } : m
               ));
             });
+            activeStreamCleanup.current.push(unlistenThink);
 
             // 监听答案增量
             const unlistenContent = await listen<string>('ai-content-delta', (e) => {
@@ -592,7 +600,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             // 监听完成
             const unlistenDone = await listen<{ duration: number }>('ai-stream-done', (e) => {
               const dur = e.payload?.duration ?? 0;
-              setThinkElapsed(0); // 重置实时计时
+              setThinkElapsed(0);
               setMessages(prev => prev.map(m =>
                 m.id === loadingId ? {
                   ...m,
@@ -609,14 +617,17 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
               unlistenContent();
               unlistenDone();
               unlistenTick();
+              activeStreamCleanup.current = [];
               setIsLoading(false);
               inputRef.current?.focus();
             });
+            activeStreamCleanup.current.push(unlistenDone);
 
             // 监听实时计时 tick
             const unlistenTick = await listen<number>('ai-think-tick', (e) => {
               setThinkElapsed(e.payload ?? 0);
             });
+            activeStreamCleanup.current.push(unlistenTick);
 
             // 监听错误（非SSE层面的错误）
             const unlistenErr = await listen<string>('ai-stream-error', (e) => {
@@ -752,21 +763,18 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
         timestamp: Date.now(),
       };
 
-      // 先显示思考块（展开状态），答案暂时隐藏
-      setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
+        // 先显示思考块（1.5秒后折叠并淡入答案）
+        setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
 
-      if (thinkContent) {
-        // 展开思考块
-        setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
-
-        // 800ms 后：折叠思考块 + 淡入答案
-        setTimeout(() => {
-          setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, answerVisible: true } : m
-          ));
-          setThinkingExpanded(prev => ({ ...prev, [loadingId]: false }));
-        }, 800);
-      }
+        if (thinkContent) {
+          setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+          setTimeout(() => {
+            setMessages(prev => prev.map(m =>
+              m.id === loadingId ? { ...m, answerVisible: true } : m
+            ));
+            setThinkingExpanded(prev => ({ ...prev, [loadingId]: false }));
+          }, 1500);
+        }
 
     } catch {
       setMessages(prev => prev.map(m =>

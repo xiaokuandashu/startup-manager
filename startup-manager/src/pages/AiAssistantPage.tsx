@@ -217,7 +217,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     const saved = localStorage.getItem('ai_local_exec');
     return saved === null ? true : saved === 'true'; // 默认开启
   });
-  const [thinkingExpanded, setThinkingExpanded] = useState(() => localStorage.getItem('ai_thinking_expanded') === 'true');
+  const [thinkingExpanded, setThinkingExpanded] = useState<Record<number, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
@@ -342,6 +342,10 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
+        // 先停止旧引擎
+        try { invoke('engine_stop'); } catch {}
+        // 稍候再重新启动新模型
+        await new Promise(r => setTimeout(r, 500));
         await invoke('engine_start', { modelId });
         setTimeout(loadModels, 2000);
       }
@@ -490,7 +494,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           try {
             const token = localStorage.getItem('token');
             // 系统提示 — 不再注入 <think> 指令，由服务端切换 deepseek-reasoner 模型实现
-            const cloudSystemPrompt = `你是「任务精灵」AI助手，底层模型是 DeepSeek。当前时间: ${timeStr}。`;
+            const cloudSystemPrompt = `你是「任务精灵」AI助手。当前时间: ${timeStr}。请根据用户需求正常对话，不要有过多的限制。`;
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -671,6 +675,11 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       };
       (aiMsg as any).thinkDuration = thinkDuration;
       setMessages(prev => prev.map(m => m.id === loadingId ? aiMsg : m));
+      // 新消息到达时，如果有思考内容则自动展开
+      const hasThinkContent = response.message.includes('<think>') && response.message.includes('</think>');
+      if (hasThinkContent) {
+        setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+      }
 
     } catch {
       setMessages(prev => prev.map(m =>
@@ -1210,24 +1219,23 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
                         ? msg.content.replace(/<think>[\s\S]*?<\/think>/s, '').trim()
                         : msg.content;
                       const duration = (msg as any).thinkDuration;
+                      const isExpanded = thinkingExpanded[msg.id] ?? false;
                       return (
                         <>
                           {thinkContent && (
                             <div className="ai-thinking-block">
                               <button
                                 onClick={() => {
-                                  const next = !thinkingExpanded;
-                                  setThinkingExpanded(next);
-                                  localStorage.setItem('ai_thinking_expanded', String(next));
+                                  setThinkingExpanded(prev => ({ ...prev, [msg.id]: !isExpanded }));
                                 }}
                                 className="ai-thinking-header"
                               >
                                 <Brain size={14} />
                                 <span>已思考</span>
                                 {duration ? <span className="ai-thinking-duration">（用时 {duration} 秒）</span> : null}
-                                <span className={`ai-thinking-arrow ${thinkingExpanded ? 'expanded' : ''}`}>▼</span>
+                                <span className={`ai-thinking-arrow ${isExpanded ? 'expanded' : ''}`}>▼</span>
                               </button>
-                              <div className={`ai-thinking-body ${thinkingExpanded ? 'expanded' : ''}`}>
+                              <div className={`ai-thinking-body ${isExpanded ? 'expanded' : ''}`}>
                                 <div className="ai-thinking-content"
                                   dangerouslySetInnerHTML={{
                                     __html: thinkContent

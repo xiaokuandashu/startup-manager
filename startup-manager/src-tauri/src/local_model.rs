@@ -1002,13 +1002,15 @@ pub async fn local_infer_stream(
 
                 if has_reasoning_field {
                     // 模式A: reasoning_content 和 content 分开返回
-                    // reasoning_content → 思考过程
-                    if let Some(rc) = delta["reasoning_content"].as_str() {
-                        if !rc.is_empty() {
-                            let _ = app.emit("ai-think-delta", rc);
+                    if deep_think {
+                        // 深度思考开启 → reasoning_content 发送为思考块
+                        if let Some(rc) = delta["reasoning_content"].as_str() {
+                            if !rc.is_empty() {
+                                let _ = app.emit("ai-think-delta", rc);
+                            }
                         }
                     }
-                    // content → 直接是最终答案（不含 think 标签）
+                    // content → 无论是否开启深度思考，都作为最终答案
                     if let Some(content) = delta["content"].as_str() {
                         if !content.is_empty() {
                             let _ = app.emit("ai-content-delta", content);

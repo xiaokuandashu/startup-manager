@@ -549,7 +549,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             const RETRY_DELAY = 5000;
             for (let retry = 0; retry < MAX_RETRIES; retry++) {
               try {
-                inferResult = await invoke<string>('local_model_infer', { input: aiInput, deepThink: deepThinkEnabled });
+                inferResult = await invoke<string>('local_model_infer', { input: aiInput, deepThink: deepThinkEnabled, modelId: activeModel });
                 break;
               } catch (e) {
                 lastError = String(e);

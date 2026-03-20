@@ -884,7 +884,7 @@ pub fn stop_engine() {
 }
 
 /// 使用内置引擎进行推理（兼容多种 llama-server 响应格式）
-pub async fn local_infer(user_input: &str, deep_think: bool) -> Result<String, String> {
+pub async fn local_infer(user_input: &str, deep_think: bool, model_id: Option<String>) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
@@ -960,7 +960,10 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
 
 严格输出JSON。"#;
 
-    let active_model = ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default();
+    // 获取模型ID：优先使用前端传来的，如果为空则降级使用后端的全局状态
+    let active_model = model_id.unwrap_or_else(|| {
+        ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default()
+    });
 
     let model_display_name = match active_model.as_str() {
         "deepseek-r1-1.5b" => "DeepSeek-R1 1.5B",

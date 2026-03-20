@@ -915,20 +915,7 @@ pub async fn local_infer(user_input: &str, deep_think: bool, model_id: Option<St
         _ => {}
     }
 
-    let system_prompt = r#"你是「任务精灵」，一个智能AI助手。底层模型是：{model_name}。
-
-请根据用户意图选择对应的输出 JSON 格式（只输出 JSON，不要说其他话）：
-
-- 普通对话/问答：
-{"message":"你的回答","response_type":"info","tasks":[]}
-
-- 用户要求创建定时任务（如：每天9点提醒、开机启动某应用）：
-{"message":"已创建任务","response_type":"task_created","tasks":[{"task_name":"任务名","task_type":"application","path":"应用路径","schedule_type":"daily","schedule_time":"09:00","schedule_days":[],"enabled":true,"confidence":0.9}]}
-
-- 查看系统信息/执行本地命令（仅在用户主动要求时）：
-{"message":"正在执行","response_type":"execute","execute_command":"命令","tasks":[]}
-
-注意：用户问好、聊天、求助时，直接用第一种格式回答，不要执行命令。"#;
+    let system_prompt = "你是「任务精灵」，一个智能AI助手。底层模型是：{model_name}。";
 
     // 获取模型ID：优先使用前端传来的，如果为空则降级使用后端的全局状态
     let active_model = model_id.unwrap_or_else(|| {

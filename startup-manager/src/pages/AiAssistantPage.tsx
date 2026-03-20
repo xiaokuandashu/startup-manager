@@ -494,7 +494,7 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
           try {
             const token = localStorage.getItem('token');
             // 系统提示 — 不再注入 <think> 指令，由服务端切换 deepseek-reasoner 模型实现
-            const cloudSystemPrompt = `你是「任务精灵」AI助手。当前时间: ${timeStr}。请根据用户需求正常对话，不要有过多的限制。`;
+            const cloudSystemPrompt = `你是「任务精灵」AI助手。当前时间: ${timeStr}。`;
             const proxyRes = await fetch('https://bt.aacc.fun:8888/api/deepseek/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

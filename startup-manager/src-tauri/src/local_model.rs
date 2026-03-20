@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 
 /// llama-server 配置
 const LLAMA_PORT: u16 = 8089;
@@ -770,7 +771,10 @@ pub fn delete_model(model_id: &str) -> Result<(), String> {
 
 /// 启动内置 llama-server 加载指定模型
 pub async fn start_engine(model_id: &str) -> Result<(), String> {
+    // 先杀死旧引擎
     stop_engine();
+    // 异步等待2秒，确保端口 8089 已释放
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     let models = available_models();
     let model = models.iter().find(|m| m.id == model_id)
@@ -810,7 +814,7 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         "--host", LLAMA_HOST,
         "--port", &LLAMA_PORT.to_string(),
         "--ctx-size", "2048",
-        "--n-predict", "512",
+        "--n-predict", "2048",
         "--threads", "4",
     ])
     .stdout(log_file.try_clone().unwrap())
@@ -819,9 +823,7 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-        // 将引擎所在目录加入 PATH，确保同目录 DLL 被优先找到
+        cmd.creation_flags(0x08000000);
         if let Some(exe_dir) = std::path::Path::new(&bin).parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
             let new_path = format!("{};{}", exe_dir.to_string_lossy(), current_path);
@@ -833,12 +835,8 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
         .map_err(|e| format!("启动引擎进程失败: {}", e))?;
 
     let pid = child.id();
-    if let Ok(mut p) = LLAMA_PID.lock() {
-        *p = Some(pid);
-    }
-    if let Ok(mut m) = ACTIVE_MODEL.lock() {
-        *m = model_id.to_string();
-    }
+    if let Ok(mut p) = LLAMA_PID.lock() { *p = Some(pid); }
+    if let Ok(mut m) = ACTIVE_MODEL.lock() { *m = model_id.to_string(); }
 
     // 等待引擎就绪（轮询 /health 最多 30 秒）
     let client = reqwest::Client::builder()
@@ -851,46 +849,22 @@ pub async fn start_engine(model_id: &str) -> Result<(), String> {
             let log_content = std::fs::read_to_string(&log_file_path).unwrap_or_default();
             return Err(format!("引擎进程已异常退出 ({})。日志: {}", status, log_content));
         }
-
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         match client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT)).send().await {
-            Ok(r) if r.status().is_success() => {
-                return Ok(());
-            }
+            Ok(r) if r.status().is_success() => { return Ok(()); }
             _ => { continue; }
         }
     }
 
-    // 30秒超时
     Err("引擎启动超时（30秒未响应）".to_string())
 }
 
-/// 停止 llama-server — 等待进程真正退出后才返回
+/// 停止 llama-server（立即 kill -9，不阻塞）
 pub fn stop_engine() {
     if let Ok(mut pid_guard) = LLAMA_PID.lock() {
         if let Some(pid) = pid_guard.take() {
             #[cfg(not(target_os = "windows"))]
-            {
-                // SIGTERM 优雅终止
-                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
-                // 最多等 5 秒让进程自然退出
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                loop {
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                    let still_alive = Command::new("kill")
-                        .args(["-0", &pid.to_string()])
-                        .status()
-                        .map(|s| s.success())
-                        .unwrap_or(false);
-                    if !still_alive { break; }
-                    if std::time::Instant::now() > deadline {
-                        // 超时则强杀
-                        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        break;
-                    }
-                }
-            }
+            { let _ = Command::new("kill").args(["-9", &pid.to_string()]).status(); }
             #[cfg(target_os = "windows")]
             {
                 use std::os::windows::process::CommandExt;
@@ -898,13 +872,147 @@ pub fn stop_engine() {
                     .args(["/PID", &pid.to_string(), "/F"])
                     .creation_flags(0x08000000)
                     .status();
-                std::thread::sleep(std::time::Duration::from_millis(800));
             }
         }
     }
     if let Ok(mut m) = ACTIVE_MODEL.lock() {
         m.clear();
     }
+}
+
+/// 流式推理：通过 SSE 实时推送思考过程和答案（Phase 2）
+pub async fn local_infer_stream(
+    user_input: &str,
+    deep_think: bool,
+    model_id: Option<String>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // 检查引擎就绪
+    let health = client.get(format!("http://{}:{}/health", LLAMA_HOST, LLAMA_PORT)).send().await;
+    match health {
+        Err(_) => return Err("推理引擎未运行，请先启动引擎".into()),
+        Ok(r) if !r.status().is_success() => {
+            return Err("引擎正在加载，请稍后重试".into());
+        }
+        _ => {}
+    }
+
+    let active_model = model_id.unwrap_or_else(|| {
+        ACTIVE_MODEL.lock().map(|m| m.clone()).unwrap_or_default()
+    });
+    let is_r1 = active_model == "deepseek-r1-1.5b";
+
+    let system_prompt = if deep_think && is_r1 {
+        "你是任务精灵AI助手。请将思考过程写在 <think> 和 </think> 标签内，然后输出最终答案。".to_string()
+    } else {
+        String::new()
+    };
+
+    let mut messages = Vec::<serde_json::Value>::new();
+    if !system_prompt.is_empty() {
+        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": user_input }));
+
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": messages,
+        "stream": true,
+        "max_tokens": 2048,
+        "temperature": 0.7
+    });
+
+    let response = client
+        .post(format!("http://{}:{}/v1/chat/completions", LLAMA_HOST, LLAMA_PORT))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let err_body = response.text().await.unwrap_or_default();
+        return Err(format!("引擎错误 {}: {}", status, err_body));
+    }
+
+    let mut byte_stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut in_think = false;
+    let mut think_done = false;
+    let start_time = std::time::Instant::now();
+
+    while let Some(chunk) = byte_stream.next().await {
+        let chunk = chunk.map_err(|e| format!("流式读取错误: {}", e))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        // 逐行解析 SSE
+        while let Some(newline_pos) = buffer.find('\n') {
+            let line = buffer[..newline_pos].trim().to_string();
+            buffer = buffer[newline_pos + 1..].to_string();
+
+            if !line.starts_with("data: ") { continue; }
+            let data = &line[6..];
+            if data == "[DONE]" {
+                let duration_secs = start_time.elapsed().as_secs();
+                let _ = app.emit("ai-stream-done", serde_json::json!({ "duration": duration_secs }));
+                return Ok(());
+            }
+
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                let delta = &json["choices"][0]["delta"];
+
+                // reasoning_content delta（Nanbeige、R1 等推理模型）
+                if let Some(rc) = delta["reasoning_content"].as_str() {
+                    if !rc.is_empty() {
+                        let _ = app.emit("ai-think-delta", rc);
+                        in_think = true;
+                    }
+                }
+
+                // content delta
+                if let Some(content) = delta["content"].as_str() {
+                    if !content.is_empty() {
+                        // 检查是否是 <think> 标签 inline（R1 模型）
+                        let content_str = content.to_string();
+                        if content_str.contains("<think>") {
+                            in_think = true;
+                        }
+                        if content_str.contains("</think>") {
+                            think_done = true;
+                            in_think = false;
+                        }
+
+                        if in_think && !think_done {
+                            // 仍在思考阶段
+                            let cleaned = content_str
+                                .replace("<think>", "").replace("</think>", "");
+                            if !cleaned.is_empty() {
+                                let _ = app.emit("ai-think-delta", cleaned.as_str());
+                            }
+                        } else {
+                            // 正式答案阶段
+                            let cleaned = content_str
+                                .replace("<think>", "").replace("</think>", "");
+                            if !cleaned.is_empty() {
+                                let _ = app.emit("ai-content-delta", cleaned.as_str());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let duration_secs = start_time.elapsed().as_secs();
+    let _ = app.emit("ai-stream-done", serde_json::json!({ "duration": duration_secs }));
+    Ok(())
 }
 
 /// 使用内置引擎进行推理（兼容多种 llama-server 响应格式）

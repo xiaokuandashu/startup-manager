@@ -347,10 +347,8 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
     try {
       if ((window as any).__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core');
-        // 先停止旧引擎
-        try { invoke('engine_stop'); } catch {}
-        // 稍候再重新启动新模型
-        await new Promise(r => setTimeout(r, 500));
+        // 先 await 停止旧引擎，然后 engine_start 内部自动等 2 秒端口释放
+        try { await invoke('engine_stop'); } catch {}
         await invoke('engine_start', { modelId });
         setTimeout(loadModels, 2000);
       }
@@ -488,7 +486,6 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
       // ========== 步骤2: AI 大脑推理（仅在未被预检测拦截时）==========
       const thinkStartTime = Date.now(); // 记录思考开始时间
       if (!response && (window as any).__TAURI_INTERNALS__) {
-        const { invoke } = await import('@tauri-apps/api/core');
 
         if (activeModel === 'deepseek_cloud' || activeModel === 'deepseek_user') {
           // DeepSeek 云端
@@ -547,52 +544,106 @@ const AiAssistantPage: React.FC<AiAssistantPageProps> = ({ lang = 'zh', onAddTas
             response = { message: `❌ 云端连接失败: ${e?.message || '网络错误'}`, response_type: 'error', tasks: [] };
           }
         } else {
-          // 本地模型推理
-          setMessages(prev => prev.map(m =>
-            m.id === loadingId ? { ...m, content: `🧠 本地模型推理中...` } : m
-          ));
-          try {
-            let inferResult: string | null = null;
-            let lastError = '';
-            const MAX_RETRIES = 5;
-            const RETRY_DELAY = 5000;
-            for (let retry = 0; retry < MAX_RETRIES; retry++) {
-              try {
-                inferResult = await invoke<string>('local_model_infer', { input: aiInput, deepThink: deepThinkEnabled, modelId: activeModel });
-                break;
-              } catch (e) {
-                lastError = String(e);
-                if (String(e).includes('正在加载') && retry < MAX_RETRIES - 1) {
-                  setMessages(prev => prev.map(m =>
-                    m.id === loadingId ? { ...m, content: `⏳ 模型加载中 (${retry + 1}/${MAX_RETRIES})...` } : m
-                  ));
-                  await new Promise(r => setTimeout(r, RETRY_DELAY));
-                  continue;
-                }
-                break;
+          // 本地模型推理 — 流式 SSE Phase 2
+          const isTauri = !!(window as any).__TAURI_INTERNALS__;
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const { listen } = await import('@tauri-apps/api/event');
+
+            // 先建立占位消息（展开的思考块状态）
+            setMessages(prev => prev.map(m =>
+              m.id === loadingId ? {
+                ...m, loading: false,
+                thinkContent: '', mainContent: '', answerVisible: false,
+                thinkDuration: 0,
+              } : m
+            ));
+            setThinkingExpanded(prev => ({ ...prev, [loadingId]: true }));
+
+            let thinkBuf = '';
+            let answerBuf = '';
+            let contentStarted = false;
+
+            // 监听思考增量
+            const unlistenThink = await listen<string>('ai-think-delta', (e) => {
+              thinkBuf += e.payload;
+              setMessages(prev => prev.map(m =>
+                m.id === loadingId ? { ...m, thinkContent: thinkBuf } : m
+              ));
+            });
+
+            // 监听答案增量
+            const unlistenContent = await listen<string>('ai-content-delta', (e) => {
+              if (!contentStarted) {
+                // 首次收到答案：折叠思考块
+                contentStarted = true;
+                setThinkingExpanded(prev => ({ ...prev, [loadingId]: false }));
+                setMessages(prev => prev.map(m =>
+                  m.id === loadingId ? { ...m, answerVisible: true } : m
+                ));
               }
+              answerBuf += e.payload;
+              setMessages(prev => prev.map(m =>
+                m.id === loadingId ? { ...m, mainContent: answerBuf } : m
+              ));
+            });
+
+            // 监听完成
+            const unlistenDone = await listen<{ duration: number }>('ai-stream-done', (e) => {
+              const dur = e.payload?.duration ?? 0;
+              setMessages(prev => prev.map(m =>
+                m.id === loadingId ? {
+                  ...m,
+                  content: (thinkBuf ? `<think>\n${thinkBuf}\n</think>\n` : '') + answerBuf,
+                  thinkContent: thinkBuf,
+                  mainContent: answerBuf || (thinkBuf && !answerBuf ? thinkBuf : ''),
+                  answerVisible: true,
+                  thinkDuration: dur,
+                  responseType: 'info',
+                  loading: false,
+                } : m
+              ));
+              unlistenThink();
+              unlistenContent();
+              unlistenDone();
+              setIsLoading(false);
+              inputRef.current?.focus();
+            });
+
+            // 监听错误（非SSE层面的错误）
+            const unlistenErr = await listen<string>('ai-stream-error', (e) => {
+              setMessages(prev => prev.map(m =>
+                m.id === loadingId ? {
+                  ...m, content: `❌ 推理错误: ${e.payload}`,
+                  responseType: 'error', loading: false,
+                } : m
+              ));
+              unlistenThink(); unlistenContent(); unlistenDone(); unlistenErr();
+              setIsLoading(false);
+            });
+
+            try {
+              await invoke('local_model_infer_stream', {
+                input: aiInput,
+                deepThink: deepThinkEnabled,
+                modelId: activeModel,
+              });
+            } catch (e: any) {
+              setMessages(prev => prev.map(m =>
+                m.id === loadingId ? {
+                  ...m, content: `❌ 本地模型推理失败: ${e}`,
+                  responseType: 'error', loading: false,
+                } : m
+              ));
+              unlistenThink(); unlistenContent(); unlistenDone(); unlistenErr();
+              setIsLoading(false);
+              inputRef.current?.focus();
             }
-            if (inferResult) {
-              const cleanJson = inferResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-              // Bug fix: 保留 <think> 标签到最终 message 中
-              const thinkMatch = cleanJson.match(/<think>[\s\S]*?<\/think>/);
-              const thinkPart = thinkMatch ? thinkMatch[0] + '\n' : '';
-              const parsed = safeParseJSON(cleanJson);
-              if (parsed && (parsed as any).message) {
-                response = parsed as unknown as AiResponse;
-                // 重新附加思考过程（safeParseJSON 会去掉 <think>）
-                if (thinkPart && response) {
-                  response.message = thinkPart + response.message;
-                }
-              } else {
-                // 如果无法解析为 JSON，直接作为文本展示（本地模型可能输出自然语言）
-                response = { message: cleanJson || inferResult, response_type: 'info', tasks: [] };
-              }
-            } else {
-              response = { message: `❌ 本地模型推理失败: ${lastError}`, response_type: 'error', tasks: [] };
-            }
-          } catch (e) {
-            response = { message: `❌ 本地模型推理失败: ${e}`, response_type: 'error', tasks: [] };
+            // 对于流式的消息，handleSend 的后续代码不应该继续处理 response
+            return;
+          } else {
+            // 非 Tauri 环境降级到非流式
+            response = { message: '❌ 本地模型仅在桌面端可用', response_type: 'error', tasks: [] };
           }
         }
       } else if (!response) {

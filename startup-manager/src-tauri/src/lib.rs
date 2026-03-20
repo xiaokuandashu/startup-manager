@@ -1425,6 +1425,16 @@ async fn local_model_infer(input: String, deep_think: Option<bool>, model_id: Op
     local_model::local_infer(&input, deep_think.unwrap_or(false), model_id).await
 }
 
+#[tauri::command]
+async fn local_model_infer_stream(
+    input: String,
+    deep_think: Option<bool>,
+    model_id: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    local_model::local_infer_stream(&input, deep_think.unwrap_or(false), model_id, &app).await
+}
+
 // ======== 辅助功能 Tauri commands ========
 
 #[tauri::command]
@@ -1606,6 +1616,7 @@ pub fn run() {
             engine_stop,
             download_engine,
             local_model_infer,
+            local_model_infer_stream,
             ax_get_window,
             ax_check_permission,
             marketplace_browse,

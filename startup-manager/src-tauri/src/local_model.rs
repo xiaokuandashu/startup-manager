@@ -51,7 +51,10 @@ struct LlamaChoice {
 
 #[derive(Debug, Deserialize)]
 struct LlamaMessage {
+    #[serde(default)]
     content: String,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 /// 进程管理（全局）
@@ -973,26 +976,27 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
     };
     let system_prompt = system_prompt.replace("{model_name}", model_display_name);
 
-    // DeepSeek-R1 是原生推理模型，自动输出 <think> 标签，不需要修改 prompt
+    // DeepSeek-R1 是原生推理模型，自动输出 <think> 标签
     let is_r1 = active_model == "deepseek-r1-1.5b";
 
-    // 非 R1 模型 + 深度思考: 用两步模拟
-    if deep_think && !is_r1 {
-        return local_infer_two_step(&client, user_input, &system_prompt, model_display_name).await;
-    }
-
-    // R1 + 深度思考: 使用特定的系统提示词强制 R1 遵循其原本的行为
-    let system_prompt = if deep_think && is_r1 {
-        format!(
-            "你是「任务精灵」AI助手（DeepSeek-R1 1.5B）。\n\
-            请仔细分析用户的问题，你必须将思考过程写在 <think> 和 </think> 标签内，然后再输出最终答案。\n\
-            请不要输出 JSON，直接用文字回答即可。"
-        )
+    // 重写系统提示词：如果开启深度思考，帮助模型进入思考模式
+    let system_prompt = if deep_think {
+        if is_r1 {
+            // R1 需要明确提示才能输出 think 标签
+            format!(
+                "你是「任务精灵」AI助手（DeepSeek-R1 1.5B）。\n\
+                请仔细分析用户的问题，你必须将思考过程写在 <think> 和 </think> 标签内，然后再输出最终答案。\n\
+                请不要输出 JSON，直接用文字回答即可。"
+            )
+        } else {
+            // Nanbeige/Phi4 等模型会自动输出 reasoning_content 字段（无需特殊提示）
+            system_prompt
+        }
     } else {
         system_prompt
     };
 
-    let max_tokens = if deep_think && is_r1 { 4096 } else { 2048 };
+    let max_tokens = if deep_think { 4096 } else { 2048 };
     let temperature = if deep_think && is_r1 { 0.1 } else { 0.3 };
 
     let body = serde_json::json!({
@@ -1030,14 +1034,26 @@ Windows: C:\Program Files\Tencent\WeChat\WeChat.exe
         }
     }
 
-    // 方式2：OpenAI choices 格式
+    // 方式2：OpenAI choices 格式（结合 reasoning_content 字段）
     if let Ok(r) = serde_json::from_str::<LlamaChoiceResponse>(&raw) {
         if let Some(choice) = r.choices.first() {
-            if let Some(ref text) = choice.text {
-                return Ok(text.clone());
-            }
+            // 优先检查 message.reasoning_content（Nanbeige等原生思考模型会返回此字段）
             if let Some(ref msg) = choice.message {
-                return Ok(msg.content.clone());
+                let content = msg.content.trim().to_string();
+                let reasoning = msg.reasoning_content.as_deref().unwrap_or("").trim().to_string();
+                if !reasoning.is_empty() {
+                    // 有原生 reasoning_content，拼接为 <think>...</think>内容
+                    let combined = format!("<think>\n{}\n</think>\n{}", reasoning, content);
+                    return Ok(combined);
+                }
+                if !content.is_empty() {
+                    return Ok(content);
+                }
+            }
+            if let Some(ref text) = choice.text {
+                if !text.is_empty() {
+                    return Ok(text.clone());
+                }
             }
         }
     }
